@@ -81,7 +81,6 @@ import Testing
     ("{const: null}", "null"),
     ("{type: [string, 'null'], enum: [a]}", "string"),
     ("{type: [string, 'null'], enum: [a, null]}", "string or null"),
-    ("{type: [string, 'null'], anyOf: [{type: string}]}", "any of string"),
     ("{type: array, items: {type: integer}}", "array of integer"),
     ("{type: object}", "object"),
     ("{type: string, properties: {a: {type: integer}}}", "string"),
@@ -114,6 +113,7 @@ import Testing
     ("{allOf: [{type: integer}, {enum: [y]}]}", "integer"),
     ("{type: object, required: [b], properties: {b: false}}", "object"),
     ("{type: [string, 'null'], not: {type: 'null'}}", "string or null"),
+    ("{type: [string, 'null'], anyOf: [{type: string}]}", "any of string or null"),
   ])
   func contradictionsAreShownAsWritten(schema: String, type: String) throws {
     #expect(try node(schema).shapeDescription == type)
@@ -188,27 +188,6 @@ import Testing
       "{type: object, properties: {a: {allOf: [{type: string}, {type: integer}]}}}")
 
     #expect(schema.object?[field: "a"]?.isForbidden == true)
-  }
-
-  @Test func otherFieldsSchemaInAllOfAppliesToTheOtherMembersFields() throws {
-    let schema = try node(
-      """
-      allOf:
-        - {properties: {a: {type: string}}, additionalProperties: {type: integer}}
-        - {properties: {a: {}, b: {type: string}}}
-      """)
-
-    #expect(schema.object?[field: "a"]?.node.shapeDescription == "string")
-    #expect(schema.object?[field: "b"]?.node.shapeDescription == "nothing")
-  }
-
-  @Test func namedFieldMatchingAPatternGetsItsConstraints() throws {
-    let schema = try node(
-      "{type: object, properties: {code: {type: string}}, patternProperties: {'^code$': {maxLength: 2}}}"
-    )
-
-    #expect(
-      schema.object?[field: "code"]?.node.rules.map(\.text) == ["allows at most 2 characters"])
   }
 
   @Test func refToASchemaThatRejectsEverythingAllowsNothing() throws {
@@ -345,47 +324,6 @@ import Testing
 
   // MARK: - Conditions
 
-  @Test func nestedConditionAndPresence() throws {
-    let schema = try node(
-      """
-      type: object
-      if:
-        properties:
-          address: {properties: {country: {enum: [GB, IE]}}}
-        required: [vatNumber]
-      then:
-        required: [postcode]
-        properties:
-          postcode: {maxLength: 8}
-      """)
-
-    #expect(
-      schema.rules.map(\.text) == [
-        #"When `address.country` is missing or is one of "GB" or "IE" and `vatNumber` is present: "#
-          + "`postcode` is required; `postcode` allows at most 8 characters"
-      ])
-  }
-
-  @Test func referencedBranchesAreDescribed() throws {
-    let nodes = try components(
-      """
-      S:
-        type: object
-        if: {$ref: '#/components/schemas/IsRejected'}
-        then: {$ref: '#/components/schemas/NeedsReason'}
-        else: {allOf: [{$ref: '#/components/schemas/NeedsNote'}, {properties: {note: {maxLength: 9}}}]}
-      IsRejected: {properties: {status: {const: Rejected}}}
-      NeedsReason: {required: [reason]}
-      NeedsNote: {required: [note]}
-      """)
-
-    #expect(
-      try nodes("S").rules.map(\.text) == [
-        #"When `status` is missing or is "Rejected": `reason` is required. "#
-          + "Otherwise: `note` is required; `note` allows at most 9 characters"
-      ])
-  }
-
   @Test func recursiveConditionEnds() throws {
     let nodes = try components(
       """
@@ -439,17 +377,46 @@ import Testing
       ])
   }
 
-  @Test func conditionIncludesEachFieldsConstraints() throws {
+  /// Only the flat shape is worded; anything else falls back, so a condition is never shown as
+  /// matching more or asking less than it does.
+  @Test(arguments: [
+    (
+      "{if: {properties: {address: {properties: {country: {const: GB}}}}}, then: {required: [vat]}}",
+      "When the `if` schema matches: `vat` is required"
+    ),
+    (
+      "{if: {properties: {amount: {type: integer, minimum: 100}}}, then: {required: [approval]}}",
+      "When the `if` schema matches: `approval` is required"
+    ),
+    (
+      "{if: {required: [ship]}, then: {properties: {address: {required: [zip]}}}}",
+      "When `ship` is present: the `then` schema applies"
+    ),
+    (
+      "{if: {required: [a]}, then: {dependentRequired: {b: [c]}}}",
+      "When `a` is present: the `then` schema applies"
+    ),
+    (
+      "{if: {required: [a]}, then: {allOf: [{required: [b]}]}}",
+      "When `a` is present: the `then` schema applies"
+    ),
+  ])
+  func conditionsBeyondTheFlatShapeFallBack(schema: String, rule: String) throws {
+    #expect(try node("{type: object, \(schema.dropFirst())").rules.map(\.text) == [rule])
+  }
+
+  @Test func branchLimitsAndForbidsFields() throws {
     let schema = try node(
       """
       type: object
-      if: {required: [amount], properties: {amount: {type: integer, minimum: 100}}}
-      then: {required: [approval]}
+      if: {required: [ship]}
+      then: {required: [zip], properties: {zip: {maxLength: 8}, box: false}}
       """)
 
     #expect(
       schema.rules.map(\.text) == [
-        "When `amount` is an integer and is at least 100: `approval` is required"
+        "When `ship` is present: `zip` is required; `zip` allows at most 8 characters; "
+          + "`box` isn't allowed"
       ])
   }
 
@@ -464,20 +431,6 @@ import Testing
     #expect(schema.rules.map(\.text) == ["When the `if` schema matches: `approval` is required"])
   }
 
-  @Test func branchWithNestedRequirementsSaysThem() throws {
-    let schema = try node(
-      """
-      type: object
-      if: {required: [ship]}
-      then: {properties: {address: {required: [zip], properties: {zip: {maxLength: 8}}}}}
-      """)
-
-    #expect(
-      schema.rules.map(\.text) == [
-        "When `ship` is present: `address.zip` is required; `address.zip` allows at most 8 characters"
-      ])
-  }
-
   @Test func branchThatCantBeWordedSaysItApplies() throws {
     let schema = try node(
       """
@@ -487,14 +440,6 @@ import Testing
       """)
 
     #expect(schema.rules.map(\.text) == ["When `ship` is present: the `then` schema applies"])
-  }
-
-  @Test func branchWithADependencySaysIt() throws {
-    let schema = try node(
-      "{type: object, if: {required: [a]}, then: {dependentRequired: {b: [c]}}}")
-
-    #expect(
-      schema.rules.map(\.text) == ["When `a` is present: when `b` is present, `c` is required"])
   }
 
   @Test func conditionWithADependencyFallsBack() throws {

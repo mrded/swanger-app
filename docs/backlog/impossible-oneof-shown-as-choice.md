@@ -1,6 +1,6 @@
 ---
 worth: later
-where: Sources/SwangerCore/Model/SchemaBuilder.swift:389
+where: Sources/SwangerCore/Model/SchemaBuilder.swift:325
 added: 2026-10-20
 ---
 # an unsatisfiable oneOf is still shown as a choice

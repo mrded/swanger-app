@@ -300,15 +300,6 @@ final class SchemaBuilder {
       && (facts.types?.contains("null") ?? true)
       && (facts.allowed?.contains(.null) ?? (facts.types != nil))
     node.choices = extraChoices
-    // Every `oneOf` and `anyOf` must also let null through. A type union's choice is the
-    // `type` itself, which already says.
-    let isTypeUnion = Self.typeGroups(facts.types?.filter { $0 != "null" } ?? []).count > 1
-    let keywordChoices = (isTypeUnion ? [] : node.choice.map { [$0] } ?? []) + extraChoices
-    if node.allowsNull,
-      keywordChoices.contains(where: { !$0.variants.contains(where: Self.admitsNull) })
-    {
-      node.allowsNull = false
-    }
     node.bases = pieces.merged.filter { $0 != identity }.elements
     if facts.types == nil, node.object != nil || node.array != nil { node.isShapeInferred = true }
     if let identity {
@@ -322,7 +313,7 @@ final class SchemaBuilder {
     // A union's type-specific limits are on its variants.
     if kind != .never {
       let isUnion = Self.typeGroups(facts.types?.filter { $0 != "null" } ?? []).count > 1
-      let general = isUnion ? facts.narrowed(to: nil) : facts.applicable
+      let general = isUnion ? facts.typeIndependent : facts.applicable
       node.rules =
         general.constraintRules(isObject: node.object != nil) + choiceRules
         + conditionRules(facts.conditions, present: Set(facts.required))
@@ -380,7 +371,7 @@ final class SchemaBuilder {
     if groups.count > 1 {
       extraChoices = besides(0..<choices.count)
       let variants = groups.map { group in
-        let narrowed = facts.narrowed(to: group)
+        let narrowed = facts.variant(group)
         var unused: [Rule] = []
         var none: [ChoiceSchema] = []
         let kind = makeKind(
@@ -438,19 +429,14 @@ final class SchemaBuilder {
     var names = Array(facts.properties.keys)
     names += facts.required.filter { facts.properties[$0] == nil }
     for name in names {
-      var parts = facts.properties[name] ?? []
+      let parts = facts.properties[name] ?? []
       var isForbidden = facts.forbidden.contains(name)
-      // A field whose name matches a pattern must match the pattern's schema too.
-      for (pattern, patternParts) in facts.patternProperties where Self.name(name, matches: pattern)
-      {
-        parts += patternParts
-      }
-      // A field another schema's `additionalProperties` doesn't list must match it too.
-      for scope in facts.scopedAdditional
-      where !scope.fields.contains(name)
-        && !scope.patterns.contains(where: { Self.name(name, matches: $0) })
-      {
-        if let part = scope.part { parts.append(part) } else { isForbidden = true }
+      // A closed `allOf` member that doesn't list the field forbids it.
+      if facts.closedScopes.contains(where: { scope in
+        !scope.fields.contains(name)
+          && !scope.patterns.contains(where: { Self.name(name, matches: $0) })
+      }) {
+        isForbidden = true
       }
       let node: SchemaNode
       if parts.isEmpty {
@@ -501,20 +487,6 @@ final class SchemaBuilder {
     let scalars = types.filter { $0 != "object" && $0 != "array" }
     let structural = types.filter { $0 == "object" || $0 == "array" }.map { [$0] }
     return structural + (scalars.isEmpty ? [] : [scalars])
-  }
-
-  /// Whether a variant can be null: it says so, it's of any type, or its shape is only inferred
-  /// from keywords that don't apply to null. Recursive and unresolved ones can't be told.
-  private static func admitsNull(_ variant: Variant) -> Bool {
-    let node = variant.node
-    switch node.kind {
-    case .recursive, .unresolved: return true
-    case .scalar(let scalar):
-      return node.allowsNull || scalar.types.isEmpty || scalar.types.contains("null")
-    case .choice(let choice): return node.allowsNull || choice.variants.contains(where: admitsNull)
-    case .object, .array: return node.allowsNull || node.isShapeInferred
-    case .never: return false
-    }
   }
 
   /// A variant written as only `required`, such as `{required: [email]}`.

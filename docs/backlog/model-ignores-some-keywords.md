@@ -1,6 +1,6 @@
 ---
 worth: later
-where: Sources/SwangerCore/Model/SchemaBuilder.swift:823
+where: Sources/SwangerCore/Model/SchemaBuilder+Facts.swift:61
 added: 2026-10-20
 ---
 # the model ignores propertyNames, dependentSchemas, unevaluatedItems and $dynamicRef

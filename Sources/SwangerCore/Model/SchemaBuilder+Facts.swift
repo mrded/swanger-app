@@ -29,9 +29,9 @@ extension SchemaBuilder {
     /// `unevaluatedProperties`: `false` when it's `false`, `true` for a schema. Shown as a rule
     /// only; the fields it sees depend on where it's written, which isn't modelled.
     var unevaluated: Bool?
-    /// Each `additionalProperties`, with the fields and patterns of the schema it's written in:
-    /// it only sees those, not the fields other `allOf` members add. A `nil` part is `false`.
-    var scopedAdditional: [(fields: Set<String>, patterns: [String], part: Part?)] = []
+    /// Each `additionalProperties: false`, with the fields and patterns of the schema it's
+    /// written in: it only sees those, so it forbids the fields other `allOf` members add.
+    var closedScopes: [(fields: Set<String>, patterns: [String])] = []
     var patternProperties = OrderedDictionary<String, [Part]>()
     var choices: [Choice] = []
     var conditions: [Condition] = []
@@ -98,57 +98,27 @@ extension SchemaBuilder {
       return facts
     }
 
-    /// The keywords for values of `types` alone, for one variant of a type union. With `nil`,
-    /// the keywords for any value: allowed values, `not`, choices and conditions.
-    func narrowed(to types: [String]?) -> Facts {
-      var narrowed = Facts()
-      guard let types else {
-        narrowed.allowed = allowed
-        narrowed.nots = nots
-        narrowed.choices = choices
-        narrowed.conditions = conditions
-        return narrowed
-      }
-      narrowed.types = types
-      if types.contains("object") {
-        narrowed.properties = properties
-        narrowed.forbidden = forbidden
-        narrowed.required = required
-        narrowed.additional = additional
-        narrowed.additionalForbidden = additionalForbidden
-        narrowed.unevaluated = unevaluated
-        narrowed.scopedAdditional = scopedAdditional
-        narrowed.patternProperties = patternProperties
-        narrowed.minProperties = minProperties
-        narrowed.maxProperties = maxProperties
-        narrowed.dependentRequired = dependentRequired
-        narrowed.hasObjectKeywords = hasObjectKeywords
-      }
-      if types.contains("array") {
-        narrowed.items = items
-        narrowed.prefixItems = prefixItems
-        narrowed.contains = contains
-        narrowed.minContains = minContains
-        narrowed.maxContains = maxContains
-        narrowed.minItems = minItems
-        narrowed.maxItems = maxItems
-        narrowed.uniqueItems = uniqueItems
-        narrowed.hasArrayKeywords = hasArrayKeywords
-      }
-      if types.contains("string") {
-        narrowed.format = format
-        narrowed.patterns = patterns
-        narrowed.minLength = minLength
-        narrowed.maxLength = maxLength
-      }
-      if types.contains("number") || types.contains("integer") {
-        narrowed.minimum = minimum
-        narrowed.exclusiveMinimum = exclusiveMinimum
-        narrowed.maximum = maximum
-        narrowed.exclusiveMaximum = exclusiveMaximum
-        narrowed.multipleOf = multipleOf
-      }
-      return narrowed
+    /// The keywords that apply whatever the value's type: allowed values, `not`, choices and
+    /// conditions. A type union's variants have the rest.
+    var typeIndependent: Facts {
+      var facts = Facts()
+      facts.allowed = allowed
+      facts.nots = nots
+      facts.choices = choices
+      facts.conditions = conditions
+      return facts
+    }
+
+    /// The keywords for one variant of a type union, such as `string` in `[object, string]`.
+    func variant(_ types: [String]) -> Facts {
+      var facts = self
+      facts.types = types
+      facts.allowed = nil
+      facts.nots = []
+      facts.choices = []
+      facts.conditions = []
+      if types.allSatisfy({ $0 == "object" || $0 == "array" }) { facts.format = nil }
+      return facts.applicable
     }
 
     mutating func add(_ piece: Piece) {
@@ -193,17 +163,14 @@ extension SchemaBuilder {
         case ("additionalProperties", .schema(let schema)):
           if Self.isForbidden(schema) {
             additionalForbidden = true
+            closedScopes.append(
+              (
+                fields: Set(object["properties"]?.schemaMap?.keys ?? []),
+                patterns: Array(object["patternProperties"]?.schemaMap?.keys ?? [])
+              ))
           } else if case .object = schema {
             additional.append(part(schema))
-          } else {
-            break
           }
-          scopedAdditional.append(
-            (
-              fields: Set(object["properties"]?.schemaMap?.keys ?? []),
-              patterns: Array(object["patternProperties"]?.schemaMap?.keys ?? []),
-              part: Self.isForbidden(schema) ? nil : part(schema)
-            ))
         case ("patternProperties", .schemaMap(let schemas)):
           for (pattern, schema) in schemas {
             patternProperties[pattern, default: []].append(part(schema))
