@@ -1,0 +1,104 @@
+openapi: 3.1.0
+info:
+  title: References
+  version: 1.0.0
+paths:
+  /pets:
+    post:
+      operationId: createPet
+      requestBody:
+        $ref: '#/components/requestBodies/NewPet'
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+components:
+  requestBodies:
+    NewPet:
+      $ref: '#/components/requestBodies/PetBody'
+    PetBody:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Pet'
+    LoopA:
+      $ref: '#/components/requestBodies/LoopB'
+    LoopB:
+      $ref: '#/components/requestBodies/LoopA'
+  responses:
+    Created:
+      $ref: './common/responses.yaml#/Created'
+  schemas:
+    Pet:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          # Data that happens to look like a reference is left alone.
+          examples:
+            - $ref: '#/not/a/reference'
+        owner:
+          $ref: '#/components/schemas/Person'
+          description: Who looks after the pet.
+        address:
+          $ref: './common/address.yaml'
+        tags:
+          type: array
+          items:
+            $ref: 'common/types.yaml#/Tag'
+    Person:
+      type: object
+      properties:
+        name:
+          type: string
+        pets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pet'
+    TreeNode:
+      type: object
+      properties:
+        value:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/TreeNode'
+    Alias:
+      $ref: '#/components/schemas/AliasAgain'
+    AliasAgain:
+      $ref: '#/components/schemas/Alias'
+    a/b:
+      type: string
+    til~de:
+      type: string
+    My Schema:
+      type: string
+    Escapes:
+      type: object
+      properties:
+        slash:
+          $ref: '#/components/schemas/a~1b'
+        tilde:
+          $ref: '#/components/schemas/til~0de'
+        space:
+          $ref: '#/components/schemas/My%20Schema'
+    Broken:
+      type: object
+      properties:
+        missingFile:
+          $ref: './common/nope.yaml#/Thing'
+        badPointer:
+          $ref: '#/components/schemas/Nope'
+        badEscape:
+          $ref: '#/components/schemas/Pet~2'
+        remote:
+          $ref: 'https://example.com/schemas/pet.yaml'
+        anchor:
+          $ref: '#pet'
+        notASchema:
+          $ref: '#/info/title'
+        notAString:
+          $ref: 42
+        brokenFile:
+          $ref: './common/broken.yaml'

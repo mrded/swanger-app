@@ -1,0 +1,14 @@
+# A schema in a file of its own. Its references are relative to this file.
+type: object
+required: [line1, postcode]
+properties:
+  line1:
+    type: string
+  postcode:
+    $ref: 'types.yaml#/Postcode'
+  country:
+    $ref: '#/$defs/Country'
+$defs:
+  Country:
+    type: string
+    enum: [GB, IE]

@@ -1,0 +1,6 @@
+Tag:
+  type: string
+  maxLength: 20
+Postcode:
+  type: string
+  pattern: '^[A-Z0-9 ]+$'

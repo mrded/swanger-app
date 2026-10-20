@@ -1,0 +1,6 @@
+Created:
+  description: Created
+  content:
+    application/json:
+      schema:
+        $ref: '../spec.yaml#/components/schemas/Pet'
