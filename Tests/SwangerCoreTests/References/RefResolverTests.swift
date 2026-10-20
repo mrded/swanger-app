@@ -16,7 +16,7 @@ import Testing
   init() throws {
     let spec = try SpecLoader.loadDocument(Fixtures.url("refs/spec.yaml"))
     let counter = self.counter
-    resolver = RefResolver(root: spec) { url throws(LoadError) in
+    resolver = RefResolver(root: spec, version: .v31) { url throws(LoadError) in
       counter.counts[url.lastPathComponent, default: 0] += 1
       return try SpecLoader.loadDocument(url)
     }

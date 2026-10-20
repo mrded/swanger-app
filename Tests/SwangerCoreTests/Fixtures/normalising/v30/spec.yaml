@@ -1,0 +1,59 @@
+openapi: 3.0.3
+info:
+  title: Orders
+  version: 1.0.0
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        content:
+          application/json:
+            # Media type examples aren't schemas, so they stay as they are.
+            example:
+              quantity: 2
+            schema:
+              $ref: '#/components/schemas/Order'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Order:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 100
+          exclusiveMaximum: false
+          example: 2
+        note:
+          type: string
+          nullable: true
+          maxLength: 140
+        status:
+          type: string
+          enum: [open, closed]
+          nullable: true
+        discount:
+          type: number
+          exclusiveMaximum: true
+          maximum: 1
+        customer:
+          $ref: './common.yaml#/Customer'
+          description: Who placed the order.
+          required: [name]
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku:
+                type: string
+                nullable: true
+      example:
+        quantity: 2
+        note: null

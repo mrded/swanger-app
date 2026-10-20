@@ -15,6 +15,9 @@ public final class RefResolver {
 
   /// The spec's own file.
   public let rootFile: URL
+  /// The spec's version. Schemas in a 3.0 spec, and in the files it refers to, are rewritten as
+  /// JSON Schema 2020-12 when they're resolved.
+  public let version: OpenAPIVersion
   public private(set) var warnings: [LoadWarning] = []
 
   private let load: Loader
@@ -22,12 +25,20 @@ public final class RefResolver {
   private var schemas: [NodeLocation: ResolvedSchema] = [:]
   private var warnedLocations: Set<NodeLocation> = []
 
-  /// - Parameter load: Reads a referenced file. Tests pass their own; a later step normalises
-  ///   OpenAPI 3.0 files here.
-  public init(root: SourceDocument, load: @escaping Loader = SpecLoader.loadDocument) {
+  /// - Parameter load: Reads a referenced file. Tests pass their own.
+  public init(
+    root: SourceDocument,
+    version: OpenAPIVersion,
+    load: @escaping Loader = SpecLoader.loadDocument
+  ) {
     rootFile = Self.key(for: root.url)
+    self.version = version
     self.load = load
     files[rootFile] = .success(root)
+  }
+
+  public convenience init(spec: OpenAPIDocument, load: @escaping Loader = SpecLoader.loadDocument) {
+    self.init(root: spec.source, version: spec.version, load: load)
   }
 
   /// The location of the whole spec.
@@ -88,12 +99,15 @@ public final class RefResolver {
 
   /// The schema at `location`, with each `$ref` in it as a ``Reference/Target/link(_:)``.
   /// `nil` when there's no schema there.
+  ///
+  /// Each schema is resolved once. In a 3.0 spec it's normalised first: this is the first point
+  /// where it's known to be a schema, which a referenced file doesn't say by itself.
   public func schema(at location: NodeLocation) -> ResolvedSchema? {
     let location = NodeLocation(file: Self.key(for: location.file), pointer: location.pointer)
     if let schema = schemas[location] { return schema }
-    guard case .success(let value) = self.value(at: location),
-      let schema = resolve(value, at: location)
-    else { return nil }
+    guard case .success(var value) = self.value(at: location) else { return nil }
+    if version == .v30 { value = OpenAPI30Normaliser.normalise(value) }
+    guard let schema = resolve(value, at: location) else { return nil }
     schemas[location] = schema
     return schema
   }
