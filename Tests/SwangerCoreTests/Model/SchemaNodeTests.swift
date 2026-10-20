@@ -92,6 +92,10 @@ import Testing
     ("{type: object, required: [b], properties: {b: false}}", "nothing"),
     ("{required: [b], properties: {b: false}}", "object"),
     ("{type: [object, 'null'], required: [b], properties: {b: false}}", "null"),
+    (
+      "{type: object, required: [a], properties: {a: {allOf: [{type: string}, {type: integer}]}}}",
+      "nothing"
+    ),
     ("{not: {}}", "nothing"),
     ("{not: true}", "nothing"),
     ("{not: {description: Anything.}}", "nothing"),
@@ -140,6 +144,36 @@ import Testing
 
     #expect(object.fields.map(\.name) == ["a", "b", "x-note"])
     #expect(object.fields.map(\.isForbidden) == [false, true, false])
+  }
+
+  @Test func unevaluatedPropertiesSeesTheVariantsFields() throws {
+    let schema = try node(
+      """
+      type: object
+      properties: {id: {type: string}}
+      anyOf: [{properties: {a: {type: string}}}, {properties: {b: {type: string}}}]
+      unevaluatedProperties: false
+      """)
+
+    #expect(schema.object?.additionalFields == .allowed)
+    #expect(
+      schema.rules.map(\.text).contains("allows no fields beyond these and the matching variant's"))
+  }
+
+  @Test func unevaluatedPropertiesWithoutVariantsClosesTheObject() throws {
+    let schema = try node(
+      "{allOf: [{type: object, properties: {a: {}}}, {properties: {b: {}}}], unevaluatedProperties: false}"
+    )
+
+    #expect(schema.object?.additionalFields == .forbidden)
+    #expect(schema.object?.fields.map(\.isForbidden) == [false, false])
+  }
+
+  @Test func impossibleFieldIsForbidden() throws {
+    let schema = try node(
+      "{type: object, properties: {a: {allOf: [{type: string}, {type: integer}]}}}")
+
+    #expect(schema.object?[field: "a"]?.isForbidden == true)
   }
 
   @Test func otherFieldsSchemaInAllOfAppliesToTheOtherMembersFields() throws {

@@ -28,6 +28,7 @@ import Testing
     #"{"properties":{"b":{"type":"string"}},"required":["b"]}"#,
     #"{"type":"object","properties":{"a":{}},"additionalProperties":false}"#,
     #"{"additionalProperties":{"type":"integer"}}"#,
+    #"{"unevaluatedProperties":false}"#,
     #"{"patternProperties":{"^a":{"type":"string"}}}"#,
     #"{"type":"array","items":{"type":"string"}}"#,
     #"{"prefixItems":[{"type":"integer"}]}"#,

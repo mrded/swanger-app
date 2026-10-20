@@ -367,7 +367,8 @@ final class SchemaBuilder {
     let hasObjectShape =
       (untyped || nonNull.contains("object"))
       && (!facts.properties.isEmpty || !facts.required.isEmpty || !facts.additional.isEmpty
-        || !facts.patternProperties.isEmpty || facts.additionalForbidden)
+        || !facts.patternProperties.isEmpty || facts.additionalForbidden
+        || facts.unevaluatedForbidden || !facts.unevaluated.isEmpty)
     // `type: [object, string]` is an object or a string, each with its own keywords.
     let groups = Self.typeGroups(nonNull)
     if groups.count > 1 {
@@ -463,6 +464,8 @@ final class SchemaBuilder {
         escapes.formUnion(built.escapes)
         node = built.node
       }
+      // No value can satisfy it, so the field can only be left out, as with `false`.
+      if node.kind == .never { isForbidden = true }
       let definedIn = parts.first?.definedIn
       object.fields.append(
         Field(
@@ -470,10 +473,10 @@ final class SchemaBuilder {
           isForbidden: isForbidden, node: node,
           definedIn: definedIn == home ? nil : definedIn))
     }
-    if facts.additionalForbidden {
+    if facts.closesOtherFields {
       object.additionalFields = .forbidden
-    } else if !facts.additional.isEmpty {
-      let built = build(facts.additional)
+    } else if !facts.otherFields.isEmpty {
+      let built = build(facts.otherFields)
       escapes.formUnion(built.escapes)
       object.additionalFields = .schema(built.node)
     }
@@ -785,6 +788,22 @@ final class SchemaBuilder {
     var prefixItems: [[Part]] = []
     var additional: [Part] = []
     var additionalForbidden = false
+    /// `unevaluatedProperties`, which also sees the fields of variants and conditions.
+    var unevaluatedForbidden = false
+    var unevaluated: [Part] = []
+
+    /// Fields may come from a variant or a condition's branch, which `unevaluatedProperties`
+    /// counts but the object's own field list doesn't. An `additionalProperties` schema evaluates
+    /// every other field, so `unevaluatedProperties` has nothing left to apply to.
+    var hasBranches: Bool { !choices.isEmpty || !conditions.isEmpty }
+    var unevaluatedApplies: Bool { additional.isEmpty }
+    /// Other fields are closed off, by `additionalProperties`, or by `unevaluatedProperties` when no
+    /// variant or branch can add fields.
+    var closesOtherFields: Bool {
+      additionalForbidden || (unevaluatedForbidden && unevaluatedApplies && !hasBranches)
+    }
+    /// The schemas other fields must match, on the same terms.
+    var otherFields: [Part] { additional + (hasBranches || !unevaluatedApplies ? [] : unevaluated) }
     /// Each `additionalProperties`, with the fields and patterns of the schema it's written in:
     /// it only sees those, not the fields other `allOf` members add. A `nil` part is `false`.
     var scopedAdditional: [(fields: Set<String>, patterns: [String], part: Part?)] = []
@@ -848,6 +867,8 @@ final class SchemaBuilder {
         narrowed.required = required
         narrowed.additional = additional
         narrowed.additionalForbidden = additionalForbidden
+        narrowed.unevaluatedForbidden = unevaluatedForbidden
+        narrowed.unevaluated = unevaluated
         narrowed.scopedAdditional = scopedAdditional
         narrowed.patternProperties = patternProperties
         narrowed.minProperties = minProperties
@@ -938,8 +959,13 @@ final class SchemaBuilder {
             if position == prefixItems.count { prefixItems.append([]) }
             prefixItems[position].append(part(schema))
           }
-        case ("additionalProperties", .schema(let schema)),
-          ("unevaluatedProperties", .schema(let schema)):
+        case ("unevaluatedProperties", .schema(let schema)):
+          if Self.isForbidden(schema) {
+            unevaluatedForbidden = true
+          } else if case .object = schema {
+            unevaluated.append(part(schema))
+          }
+        case ("additionalProperties", .schema(let schema)):
           if Self.isForbidden(schema) {
             additionalForbidden = true
           } else if case .object = schema {
@@ -947,14 +973,12 @@ final class SchemaBuilder {
           } else {
             break
           }
-          if name == "additionalProperties" {
-            scopedAdditional.append(
-              (
-                fields: Set(object["properties"]?.schemaMap?.keys ?? []),
-                patterns: Array(object["patternProperties"]?.schemaMap?.keys ?? []),
-                part: Self.isForbidden(schema) ? nil : part(schema)
-              ))
-          }
+          scopedAdditional.append(
+            (
+              fields: Set(object["properties"]?.schemaMap?.keys ?? []),
+              patterns: Array(object["patternProperties"]?.schemaMap?.keys ?? []),
+              part: Self.isForbidden(schema) ? nil : part(schema)
+            ))
         case ("patternProperties", .schemaMap(let schemas)):
           for (pattern, schema) in schemas {
             patternProperties[pattern, default: []].append(part(schema))
@@ -1096,7 +1120,14 @@ final class SchemaBuilder {
         }
       }
       phrases += Self.range(minProperties, maxProperties, noun: "field")
-      if isObject, additionalForbidden { phrases.append("allows no other fields") }
+      if isObject, closesOtherFields {
+        phrases.append("allows no other fields")
+      } else if isObject, unevaluatedForbidden, unevaluatedApplies {
+        phrases.append("allows no fields beyond these and the matching variant's")
+      } else if isObject, hasBranches, unevaluatedApplies, !unevaluated.isEmpty {
+        phrases.append(
+          "fields beyond these and the matching variant's must match `unevaluatedProperties`")
+      }
       phrases += nots.map(Self.negation)
       return phrases
     }
