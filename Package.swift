@@ -35,7 +35,12 @@ let package = Package(
     ),
     .testTarget(
       name: "SwangerCoreTests",
-      dependencies: ["SwangerCore"],
+      dependencies: [
+        "SwangerCore",
+        .product(name: "JSONSchema", package: "swift-json-schema"),
+        .product(name: "OrderedJSON", package: "swift-json-schema"),
+        .product(name: "OrderedCollections", package: "swift-collections"),
+      ],
       resources: [.copy("Fixtures")]
     ),
     .testTarget(

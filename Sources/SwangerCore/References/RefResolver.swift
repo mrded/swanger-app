@@ -205,6 +205,12 @@ public final class RefResolver {
 
   /// Where `ref`, written at `site`, points. Checks the value exists, not what it is.
   private func target(of ref: String, from site: NodeLocation) -> Result<NodeLocation, RefFailure> {
+    location(of: ref, from: site).flatMap { location in value(at: location).map { _ in location } }
+  }
+
+  /// Where `ref`, written at `site`, points, worked out from its text alone: nothing is read, so
+  /// the target may not exist.
+  func location(of ref: String, from site: NodeLocation) -> Result<NodeLocation, RefFailure> {
     let parts = ref.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
     let path = String(parts[0])
     let fragment = parts.count > 1 ? String(parts[1]) : ""
@@ -224,8 +230,7 @@ public final class RefResolver {
     guard decoded.isEmpty || decoded.hasPrefix("/") else { return .failure(.anchor(decoded)) }
     guard let pointer = JSONPointer(decoded) else { return .failure(.invalidPointer(fragment)) }
 
-    let location = NodeLocation(file: file, pointer: pointer)
-    return value(at: location).map { _ in location }
+    return .success(NodeLocation(file: file, pointer: pointer))
   }
 
   // MARK: - Expanding

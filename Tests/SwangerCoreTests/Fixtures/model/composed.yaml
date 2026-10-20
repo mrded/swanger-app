@@ -1,0 +1,105 @@
+openapi: 3.1.0
+info: {title: Composed, version: '1'}
+paths:
+  /prices:
+    put:
+      operationId: setPrices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                currency: {type: string}
+              patternProperties:
+                '^x-': {$ref: '#/components/schemas/Note'}
+              additionalProperties: {$ref: '#/components/schemas/Price'}
+      responses:
+        '204': {description: Saved}
+  /names:
+    put:
+      operationId: rename
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ShortName'}
+      responses:
+        '204': {description: Renamed}
+  /nicknames:
+    put:
+      operationId: renameNickname
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TinyName'}
+      responses:
+        '204': {description: Renamed}
+  /customers:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: 'customers/model.yaml'}
+      responses:
+        '204': {description: Created}
+  /orders:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: 'orders/model.yaml'}
+      responses:
+        '204': {description: Created}
+  /labels:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Name', examples: [Ada]}
+      responses:
+        '204': {description: Created}
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Name', examples: [Grace]}
+      responses:
+        '204': {description: Replaced}
+  /payments:
+    post:
+      operationId: pay
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: {type: string}
+              oneOf:
+                - $ref: '#/components/schemas/Card'
+                - $ref: '#/components/schemas/Cash'
+      responses:
+        '204': {description: Paid}
+components:
+  schemas:
+    Price:
+      type: object
+      properties:
+        amount: {type: number, minimum: 1}
+    Note: {type: string, maxLength: 20}
+    Card:
+      type: object
+      required: [number]
+      properties:
+        number: {type: string, pattern: '^\d{16}$'}
+    Cash:
+      type: object
+      properties:
+        change: {type: boolean}
+    Name: {type: string, minLength: 1}
+    ShortName: {$ref: '#/components/schemas/Name', maxLength: 10}
+    TinyName: {$ref: '#/components/schemas/ShortName', maxLength: 5}
+    # Not used anywhere, so the missing file is never read.
+    Unused: {$ref: 'missing.yaml'}
+    UnusedChain: {$ref: '#/components/schemas/Unused'}

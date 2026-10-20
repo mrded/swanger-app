@@ -19,23 +19,36 @@ final class SchemaBuilder {
   private(set) var fragments: OrderedDictionary<NodeLocation, FragmentRef> = [:]
   private var takenNames: [String: NodeLocation] = [:]
   private var cache: [NodeLocation: SchemaNode] = [:]
-  /// The spec's component names, by the schema each one is or only points to.
+  /// The spec's component names, by the schema each one is and the ones it only points to.
   private var componentNames: [NodeLocation: String] = [:]
 
   init(resolver: RefResolver) {
     self.resolver = resolver
     // A component that's only a `$ref`, such as `address: {$ref: address.schema.json}`, names the
-    // schema it points to. Its raw JSON is enough to tell, so unused components aren't resolved.
+    // schema it points to. The `$ref`'s text is enough to tell where that is, so no other file is
+    // read and unused components cost nothing.
     let schemas = resolver.rootLocation.appending("components").appending("schemas")
     guard case .success(.object(let components)) = resolver.value(at: schemas) else { return }
     for (name, value) in components {
       var location = schemas.appending(name)
-      if value.object.map({ Array($0.keys) == ["$ref"] }) == true,
-        case .success(let target) = resolver.dereference(location)
-      {
+      var value = value
+      var visited: Set<NodeLocation> = []
+      while visited.insert(location).inserted {
+        if componentNames[location] == nil { componentNames[location] = name }
+        guard let object = value.object, Array(object.keys) == ["$ref"],
+          let ref = object["$ref"]?.string,
+          case .success(let target) = resolver.location(of: ref, from: location)
+        else { break }
         location = target
+        // Further hops are only followed inside the spec itself, which is already read.
+        guard target.file == resolver.rootLocation.file,
+          case .success(let next) = resolver.value(at: target)
+        else {
+          if componentNames[target] == nil { componentNames[target] = name }
+          break
+        }
+        value = next
       }
-      if componentNames[location] == nil { componentNames[location] = name }
     }
   }
 
@@ -88,6 +101,8 @@ final class SchemaBuilder {
     var list: [Piece] = []
     /// Fragments reached directly from the node's own keywords.
     var topRefs: [FragmentRef] = []
+    /// Every fragment merged in, including those reached through other fragments.
+    var merged: OrderedSet<FragmentRef> = []
     var recursive: [FragmentRef] = []
     var unresolved: [(ref: String, failure: RefFailure)] = []
     var never = false
@@ -161,6 +176,10 @@ final class SchemaBuilder {
       }
       if let cached = cache[fragment.id] { return Built(node: cached) }
       var built = build([Part(schema: schema, definedIn: fragment, path: path + chain)])
+      // A fragment that only tightens another, like `{$ref: Name, maxLength: 10}`, is built on it.
+      if let base = built.node.fragment, base != fragment, !built.node.bases.contains(base) {
+        built.node.bases.insert(base, at: 0)
+      }
       built.node.fragment = fragment
       built.node.location = fragment.id
       built.node.isTightened = false
@@ -194,6 +213,7 @@ final class SchemaBuilder {
             pieces.escapes.insert(repeated)
           } else {
             if topRef == nil { pieces.topRefs.append(fragment) }
+            pieces.merged.append(fragment)
             pieces.entered.formUnion(chain)
             flatten(
               target, definedIn: fragment, path: path + chain, topRef: topRef ?? fragment,
@@ -223,7 +243,10 @@ final class SchemaBuilder {
       let kind = SchemaNode.Kind.unresolved(ref: unresolved.ref, failure: unresolved.failure)
       built = Built(node: SchemaNode(kind: kind, location: location))
     } else if pieces.never {
-      built = Built(node: SchemaNode(kind: .never, location: location))
+      // Still built on the fragments merged in: they're why nothing is valid.
+      var node = SchemaNode(kind: .never, location: location)
+      node.bases = pieces.merged.elements
+      built = Built(node: node)
     } else {
       built = merge(pieces, location: location)
     }
@@ -244,6 +267,7 @@ final class SchemaBuilder {
   private func merge(_ pieces: Pieces, location: NodeLocation) -> Built {
     var facts = Facts()
     for piece in pieces.list { facts.add(piece) }
+    facts.applyNegatedTypes()
     let home = pieces.list.first(where: \.isOwn)?.definedIn
 
     // The node is a fragment when it reaches exactly one, and only tightens it.
@@ -258,10 +282,17 @@ final class SchemaBuilder {
 
     var escapes: Set<NodeLocation> = []
     var choiceRules: [Rule] = []
+    var extraChoices: [ChoiceSchema] = []
     let kind = makeKind(
-      facts, home: identity ?? home, escapes: &escapes, choiceRules: &choiceRules)
+      facts, home: identity ?? home, location: identity?.id ?? location, escapes: &escapes,
+      choiceRules: &choiceRules, extraChoices: &extraChoices)
     var node = SchemaNode(kind: kind, location: identity?.id ?? location)
-    node.allowsNull = facts.types?.contains("null") ?? false
+    node.allowsNull =
+      kind != .never
+      && (facts.types?.contains("null") ?? facts.allowed?.contains(.null) ?? false)
+    node.choices = extraChoices
+    node.bases = pieces.merged.filter { $0 != identity }.elements
+    if facts.types == nil, node.object != nil || node.array != nil { node.isShapeInferred = true }
     if let identity {
       node.fragment = identity
       node.isTightened = pieces.list.contains { piece in
@@ -269,36 +300,106 @@ final class SchemaBuilder {
           && piece.object.keywords.keys.contains { $0 != "allOf" && !Self.isAnnotation($0) }
       }
     }
-    node.rules =
-      facts.constraintRules(isObject: node.object != nil) + choiceRules + facts.conditionRules()
-      + facts.dependencyRules()
+    // Nothing is valid, so limits on its value would only mislead, as with a `false` schema.
+    // A union's type-specific limits are on its variants.
+    if kind != .never {
+      let isUnion = Self.typeGroups(facts.types?.filter { $0 != "null" } ?? []).count > 1
+      let general = isUnion ? facts.narrowed(to: nil) : facts
+      node.rules =
+        general.constraintRules(isObject: node.object != nil) + choiceRules
+        + conditionRules(facts.conditions, present: Set(facts.required))
+        + general.dependencyRules()
+    }
     return Built(node: node, escapes: escapes)
   }
 
   private func makeKind(
     _ facts: Facts,
     home: FragmentRef?,
+    location: NodeLocation,
     escapes: inout Set<NodeLocation>,
-    choiceRules: inout [Rule]
+    choiceRules: inout [Rule],
+    extraChoices: inout [ChoiceSchema]
   ) -> SchemaNode.Kind {
+    // `allOf` members whose types or allowed values don't overlap, like string and integer, and
+    // `not: {}` allow no value at all.
+    if facts.types?.isEmpty == true || facts.allowed?.isEmpty == true
+      || facts.nots.contains(where: Facts.isEmpty)
+    {
+      return .never
+    }
+    // Allowed values the `type` rules out, like `type: integer` with `enum: [a]`.
+    if let types = facts.types, let allowed = facts.allowed,
+      !allowed.contains(where: { value in
+        let type = value.primitive.rawValue
+        return types.contains(type) || (type == "integer" && types.contains("number"))
+      })
+    {
+      return .never
+    }
     let types = facts.types ?? []
     let nonNull = types.filter { $0 != "null" }
+    // Object and array keywords only make an object or array when there's no `type`: JSON
+    // Schema ignores `properties` on a string or null.
+    let untyped = facts.types == nil
     let isObject =
-      nonNull.contains("object") || !facts.properties.isEmpty
-      || (facts.hasObjectKeywords && nonNull.isEmpty)
-    let isArray = nonNull.contains("array") || (facts.hasArrayKeywords && nonNull.isEmpty)
+      nonNull.contains("object")
+      || (untyped && (!facts.properties.isEmpty || facts.hasObjectKeywords))
+    let isArray = nonNull.contains("array") || (untyped && facts.hasArrayKeywords)
 
     var choices: [ChoiceSchema] = []
+    var onlyRequire: [Bool] = []
     for choice in facts.choices {
-      let (schema, distinguishing) = buildChoice(choice, escapes: &escapes)
+      let (schema, distinguishing) = buildChoice(
+        choice, outerTypes: facts.types, escapes: &escapes)
+      // No variant can match under the outer `type`.
+      if schema.variants.isEmpty { return .never }
       choices.append(schema)
+      onlyRequire.append(choice.members.allSatisfy(Self.onlyRequires))
       choiceRules += Self.choiceRules(schema, distinguishing: distinguishing)
     }
-    if let choice = choices.first, facts.properties.isEmpty, !isArray {
+    // Common fields, an array's shape or a type sit beside the variants. Variants that only
+    // require fields, like "needs `email` or `phone`", are said in full by their rule.
+    func besides(_ indices: Range<Int>) -> [ChoiceSchema] {
+      indices.filter { !onlyRequire[$0] }.map { choices[$0] }
+    }
+    // Fields listed only as required, or limits on other fields, are a shape of their own.
+    let hasObjectShape =
+      (untyped || nonNull.contains("object"))
+      && (!facts.properties.isEmpty || !facts.required.isEmpty || !facts.additional.isEmpty
+        || !facts.patternProperties.isEmpty || facts.additionalForbidden)
+    // `type: [object, string]` is an object or a string, each with its own keywords.
+    let groups = Self.typeGroups(nonNull)
+    if groups.count > 1 {
+      extraChoices = besides(0..<choices.count)
+      let variants = groups.map { group in
+        let narrowed = facts.narrowed(to: group)
+        var unused: [Rule] = []
+        var none: [ChoiceSchema] = []
+        let kind = makeKind(
+          narrowed, home: home, location: location, escapes: &escapes, choiceRules: &unused,
+          extraChoices: &none)
+        var node = SchemaNode(kind: kind, location: location)
+        node.rules =
+          narrowed.constraintRules(isObject: node.object != nil) + narrowed.dependencyRules()
+        return Variant(name: node.shapeDescription, discriminatorValue: nil, node: node)
+      }
+      return .choice(ChoiceSchema(mode: .oneOf, discriminator: nil, variants: variants))
+    }
+    if let choice = choices.first, !hasObjectShape, !isArray {
+      extraChoices = besides(1..<choices.count)
       return .choice(choice)
     }
+    extraChoices = besides(0..<choices.count)
     if isObject {
-      return .object(buildObject(facts, home: home, escapes: &escapes))
+      let object = buildObject(facts, home: home, escapes: &escapes)
+      // A field that's both required and forbidden can't be satisfied, when the `type` says
+      // it's an object: otherwise values of other types still are.
+      if facts.types != nil, object.fields.contains(where: { $0.isRequired && $0.isForbidden }) {
+        // Object keywords don't apply to null, so a nullable one is still null.
+        return nonNull.count < types.count ? .scalar(ScalarSchema(types: ["null"])) : .never
+      }
+      return .object(object)
     }
     if isArray {
       var array = ArraySchema()
@@ -307,8 +408,9 @@ final class SchemaBuilder {
         escapes.formUnion(built.escapes)
         array.items = built.node
       }
-      for part in facts.prefixItems {
-        let built = build([part])
+      for (position, parts) in facts.prefixItems.enumerated() {
+        let covering = facts.items.indices.filter { facts.itemsStart[$0] <= position }
+        let built = build(parts + covering.map { facts.items[$0] })
         escapes.formUnion(built.escapes)
         array.prefixItems.append(built.node)
       }
@@ -316,8 +418,11 @@ final class SchemaBuilder {
     }
     var scalarTypes = nonNull.isEmpty && types == ["null"] ? types : nonNull
     if facts.types == nil, let allowed = facts.allowed {
-      // `const: card` without a `type` is a string.
-      scalarTypes = Array(OrderedSet(allowed.filter { $0 != .null }.map(\.primitive.rawValue)))
+      // `const: card` without a `type` is a string; `const: null` is null. Null beside other
+      // values is the node's `allowsNull`.
+      let inferred = OrderedSet(allowed.map(\.primitive.rawValue))
+      let nonNull = inferred.filter { $0 != "null" }
+      scalarTypes = nonNull.isEmpty ? Array(inferred) : Array(nonNull)
     }
     return .scalar(
       ScalarSchema(
@@ -334,12 +439,24 @@ final class SchemaBuilder {
     var names = Array(facts.properties.keys)
     names += facts.required.filter { facts.properties[$0] == nil }
     for name in names {
-      let parts = facts.properties[name] ?? []
+      var parts = facts.properties[name] ?? []
+      var isForbidden = facts.forbidden.contains(name)
+      // A field whose name matches a pattern must match the pattern's schema too.
+      for (pattern, patternParts) in facts.patternProperties where Self.name(name, matches: pattern)
+      {
+        parts += patternParts
+      }
+      // A field another schema's `additionalProperties` doesn't list must match it too.
+      for scope in facts.scopedAdditional
+      where !scope.fields.contains(name)
+        && !scope.patterns.contains(where: { Self.name(name, matches: $0) })
+      {
+        if let part = scope.part { parts.append(part) } else { isForbidden = true }
+      }
       let node: SchemaNode
       if parts.isEmpty {
         // Only required, or only forbidden: the field has no schema of its own.
-        let kind: SchemaNode.Kind =
-          facts.forbidden.contains(name) ? .never : .scalar(ScalarSchema())
+        let kind: SchemaNode.Kind = isForbidden ? .never : .scalar(ScalarSchema())
         node = SchemaNode(kind: kind, location: home?.id ?? resolver.rootLocation)
       } else {
         let built = build(parts)
@@ -350,7 +467,7 @@ final class SchemaBuilder {
       object.fields.append(
         Field(
           name: name, isRequired: facts.required.contains(name),
-          isForbidden: facts.forbidden.contains(name), node: node,
+          isForbidden: isForbidden, node: node,
           definedIn: definedIn == home ? nil : definedIn))
     }
     if facts.additionalForbidden {
@@ -368,16 +485,100 @@ final class SchemaBuilder {
     return object
   }
 
+  /// Whether a `patternProperties` pattern matches a field name. A pattern that isn't a valid
+  /// regular expression matches nothing.
+  private static func name(_ name: String, matches pattern: String) -> Bool {
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+    return regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil
+  }
+
   // MARK: - Choices
+
+  /// The variants of a type union: `object` and `array` each on their own, other types together.
+  /// One group means there's no union to show.
+  private static func typeGroups(_ types: [String]) -> [[String]] {
+    let scalars = types.filter { $0 != "object" && $0 != "array" }
+    let structural = types.filter { $0 == "object" || $0 == "array" }.map { [$0] }
+    return structural + (scalars.isEmpty ? [] : [scalars])
+  }
+
+  /// `node` as it can be under a `type` written beside it: the types they don't share are
+  /// impossible.
+  private static func restricted(_ node: SchemaNode, to types: [String]) -> SchemaNode {
+    var node = node
+    let allows = { (type: String) in
+      types.contains(type) || (type == "integer" && types.contains("number"))
+    }
+    if !types.contains("null") { node.allowsNull = false }
+    let outerScalars = types.filter { $0 != "object" && $0 != "array" }
+    switch node.kind {
+    case .object, .array:
+      let shape = node.object != nil ? "object" : "array"
+      guard !allows(shape) else { break }
+      if node.isShapeInferred {
+        // `{required: [a]}` doesn't apply to a string, so it allows any value of the outer type.
+        node.isShapeInferred = false
+        node.fragment = nil
+        node.isTightened = false
+        node.rules = []
+        if !outerScalars.isEmpty {
+          node.kind = .scalar(ScalarSchema(types: outerScalars))
+        } else {
+          node.kind = allows("array") ? .array(ArraySchema()) : .object(ObjectSchema())
+        }
+      } else {
+        node.kind = .never
+      }
+    case .scalar(var scalar):
+      if !scalar.types.isEmpty {
+        scalar.types = Facts.intersect(scalar.types, types)
+        node.kind = scalar.types.isEmpty ? .never : .scalar(scalar)
+      } else if !outerScalars.isEmpty {
+        // A variant of any type, like `{maxLength: 2}`, is what the outer type allows.
+        scalar.types = outerScalars
+        node.kind = .scalar(scalar)
+      }
+    case .choice(var choice):
+      choice.variants = choice.variants.map { variant in
+        var variant = variant
+        variant.node = restricted(variant.node, to: types)
+        return variant
+      }.filter { $0.node.kind != .never }
+      node.kind = choice.variants.isEmpty ? .never : .choice(choice)
+    case .recursive, .unresolved, .never:
+      break
+    }
+    // A nullable variant whose own shape is ruled out still allows null, when the outer type does.
+    if node.kind == .never, node.allowsNull, types.contains("null") {
+      node.kind = .scalar(ScalarSchema(types: ["null"]))
+      node.fragment = nil
+      node.isTightened = false
+    }
+    if node.kind == .never { node.rules = [] }
+    return node
+  }
+
+  /// A variant written as only `required`, such as `{required: [email]}`.
+  private static func onlyRequires(_ member: Part) -> Bool {
+    guard case .object(let object) = member.schema, object.reference == nil else { return false }
+    return object.keywords.keys.allSatisfy { $0 == "required" || isAnnotation($0) }
+  }
 
   private func buildChoice(
     _ choice: Facts.Choice,
+    outerTypes: [String]?,
     escapes: inout Set<NodeLocation>
   ) -> (ChoiceSchema, distinguishing: [[String]]) {
-    let nodes = choice.members.map { member in
+    var nodes: [SchemaNode] = []
+    var members: [Part] = []
+    for member in choice.members {
       let built = build([member])
       escapes.formUnion(built.escapes)
-      return built.node
+      // A variant the outer `type` rules out can never match, so it isn't shown.
+      let node = outerTypes.map { Self.restricted(built.node, to: $0) } ?? built.node
+      guard node.kind != .never else { continue }
+      nodes.append(node)
+      members.append(member)
     }
 
     let required = nodes.map { $0.object?.fields.filter(\.isRequired).map(\.name) ?? [] }
@@ -390,7 +591,7 @@ final class SchemaBuilder {
     for (index, node) in nodes.enumerated() {
       let value = property.flatMap { property in
         Self.discriminatorValue(
-          of: node, member: choice.members[index], property: property,
+          of: node, member: members[index], property: property,
           mapping: explicit?["mapping"]?.object, isExplicit: explicit != nil)
       }
       let name = Self.variantName(
@@ -515,7 +716,11 @@ final class SchemaBuilder {
   private func register(_ chain: [NodeLocation]) -> FragmentRef {
     let location = chain[chain.count - 1]
     if let known = fragments[location] { return known }
-    var name = componentNames[location] ?? shortName(of: location)
+    // The name of the component nearest the end of the chain, such as the alias that pointed
+    // at a file.
+    var name =
+      chain.reversed().lazy.compactMap { self.componentNames[$0] }.first
+      ?? shortName(of: location)
     if let holder = takenNames[name], holder != location {
       name = resolver.origin(of: location).name
     }
@@ -573,9 +778,16 @@ final class SchemaBuilder {
     var forbidden: Set<String> = []
     var required = OrderedSet<String>()
     var items: [Part] = []
-    var prefixItems: [Part] = []
+    /// For each of `items`, the first position it covers: after its own schema's `prefixItems`,
+    /// which may be shorter than another `allOf` member's.
+    var itemsStart: [Int] = []
+    /// The schemas for each position of a tuple, from every piece.
+    var prefixItems: [[Part]] = []
     var additional: [Part] = []
     var additionalForbidden = false
+    /// Each `additionalProperties`, with the fields and patterns of the schema it's written in:
+    /// it only sees those, not the fields other `allOf` members add. A `nil` part is `false`.
+    var scopedAdditional: [(fields: Set<String>, patterns: [String], part: Part?)] = []
     var patternProperties = OrderedDictionary<String, [Part]>()
     var choices: [Choice] = []
     var conditions: [Condition] = []
@@ -608,6 +820,85 @@ final class SchemaBuilder {
       "contains", "items", "maxItems", "minItems", "prefixItems", "uniqueItems", "unevaluatedItems",
     ]
 
+    /// The same facts with nothing required, for a part of a condition that may be missing.
+    var withoutRequired: Facts {
+      var facts = self
+      facts.required = []
+      return facts
+    }
+
+    /// The keywords for values of `types` alone, for one variant of a type union. With `nil`,
+    /// the keywords for any value: allowed values, `not`, choices and conditions.
+    func narrowed(to types: [String]?) -> Facts {
+      var narrowed = Facts()
+      guard let types else {
+        narrowed.allowed = allowed
+        narrowed.nots = nots
+        narrowed.choices = choices
+        narrowed.conditions = conditions
+        return narrowed
+      }
+      narrowed.types = types
+      if types.contains("object") {
+        narrowed.properties = properties
+        narrowed.forbidden = forbidden
+        narrowed.required = required
+        narrowed.additional = additional
+        narrowed.additionalForbidden = additionalForbidden
+        narrowed.scopedAdditional = scopedAdditional
+        narrowed.patternProperties = patternProperties
+        narrowed.minProperties = minProperties
+        narrowed.maxProperties = maxProperties
+        narrowed.dependentRequired = dependentRequired
+        narrowed.hasObjectKeywords = hasObjectKeywords
+      }
+      if types.contains("array") {
+        narrowed.items = items
+        narrowed.itemsStart = itemsStart
+        narrowed.prefixItems = prefixItems
+        narrowed.contains = contains
+        narrowed.minItems = minItems
+        narrowed.maxItems = maxItems
+        narrowed.uniqueItems = uniqueItems
+        narrowed.hasArrayKeywords = hasArrayKeywords
+      }
+      if types.contains("string") {
+        narrowed.format = format
+        narrowed.patterns = patterns
+        narrowed.minLength = minLength
+        narrowed.maxLength = maxLength
+      }
+      if types.contains("number") || types.contains("integer") {
+        narrowed.minimum = minimum
+        narrowed.exclusiveMinimum = exclusiveMinimum
+        narrowed.maximum = maximum
+        narrowed.exclusiveMaximum = exclusiveMaximum
+        narrowed.multipleOf = multipleOf
+      }
+      return narrowed
+    }
+
+    /// `not: {type: string}` beside a `type` takes that type away, so `type: [string, null]`
+    /// with `not: {type: null}` is a string.
+    mutating func applyNegatedTypes() {
+      guard let current = types else { return }
+      var excluded: Set<String> = []
+      nots.removeAll { schema in
+        guard case .object(let object) = schema, object.reference == nil,
+          Array(object.keywords.keys) == ["type"], let value = object["type"]?.value
+        else { return false }
+        let types = Set(value.string.map { [$0] } ?? value.array?.compactMap(\.string) ?? [])
+        excluded.formUnion(types)
+        // `number` without integers isn't a type of its own, so that `not` stays as a rule.
+        return
+          !(types.contains("integer") && !types.contains("number")
+          && current.contains("number"))
+      }
+      types = current.filter { type in
+        !excluded.contains(type) && !(type == "integer" && excluded.contains("number"))
+      }
+    }
+
     mutating func add(_ piece: Piece) {
       add(piece.object, definedIn: piece.definedIn, path: piece.path)
     }
@@ -636,14 +927,28 @@ final class SchemaBuilder {
           for field in value.array?.compactMap(\.string) ?? [] { required.append(field) }
         case ("items", .schema(let schema)):
           items.append(part(schema))
+          itemsStart.append(object["prefixItems"]?.schemas?.count ?? 0)
         case ("items", .schemas(let schemas)), ("prefixItems", .schemas(let schemas)):
-          if prefixItems.isEmpty { prefixItems = schemas.map(part) }
+          for (position, schema) in schemas.enumerated() {
+            if position == prefixItems.count { prefixItems.append([]) }
+            prefixItems[position].append(part(schema))
+          }
         case ("additionalProperties", .schema(let schema)),
           ("unevaluatedProperties", .schema(let schema)):
           if Self.isForbidden(schema) {
             additionalForbidden = true
           } else if case .object = schema {
             additional.append(part(schema))
+          } else {
+            break
+          }
+          if name == "additionalProperties" {
+            scopedAdditional.append(
+              (
+                fields: Set(object["properties"]?.schemaMap?.keys ?? []),
+                patterns: Array(object["patternProperties"]?.schemaMap?.keys ?? []),
+                part: Self.isForbidden(schema) ? nil : part(schema)
+              ))
           }
         case ("patternProperties", .schemaMap(let schemas)):
           for (pattern, schema) in schemas {
@@ -719,12 +1024,13 @@ final class SchemaBuilder {
     static func isEmpty(_ schema: ResolvedSchema) -> Bool {
       switch schema {
       case .boolean(let bool, _): bool
-      case .object(let object): object.reference == nil && object.keywords.isEmpty
+      case .object(let object):
+        object.reference == nil && object.keywords.keys.allSatisfy(SchemaBuilder.isAnnotation)
       }
     }
 
     /// Types both lists allow, where `integer` is a kind of `number`.
-    private static func intersect(_ lhs: [String], _ rhs: [String]) -> [String] {
+    static func intersect(_ lhs: [String], _ rhs: [String]) -> [String] {
       var result = lhs.filter { rhs.contains($0) || ($0 == "integer" && rhs.contains("number")) }
       if lhs.contains("number"), rhs.contains("integer"), !result.contains("integer") {
         result.append("integer")
@@ -766,24 +1072,12 @@ final class SchemaBuilder {
       if !contains.isEmpty { phrases.append("needs at least one item matching `contains`") }
       phrases += Self.range(minProperties, maxProperties, noun: "field")
       if isObject, additionalForbidden { phrases.append("allows no other fields") }
-      // `not: {}` forbids the value altogether, which is shown on the field instead.
-      phrases += nots.filter { !Self.isEmpty($0) }.map(Self.negation)
+      phrases += nots.map(Self.negation)
       return phrases
     }
 
     func constraintRules(isObject: Bool) -> [Rule] {
       constraintPhrases(isObject: isObject).map { Rule(.constraint, $0) }
-    }
-
-    func conditionRules() -> [Rule] {
-      conditions.map { condition in
-        var text = "When \(Self.describe(condition.condition))"
-        text += ": \(condition.then.flatMap(Self.effects) ?? "nothing more is needed")"
-        if let otherwise = condition.otherwise.flatMap(Self.effects) {
-          text += ". Otherwise: \(otherwise)"
-        }
-        return Rule(.condition, text)
-      }
     }
 
     func dependencyRules() -> [Rule] {
@@ -817,72 +1111,138 @@ final class SchemaBuilder {
       if let values = object["enum"]?.value?.array ?? object["const"]?.value.map({ [$0] }) {
         return "mustn't be \(list(values.map(Wording.literal), "or"))"
       }
+      if Array(object.keywords.keys) == ["type"], let value = object["type"]?.value {
+        let types = value.string.map { [$0] } ?? value.array?.compactMap(\.string) ?? []
+        let named = types.map { type in
+          type == "null"
+            ? "null"
+            : (type == "integer" || type == "object" || type == "array" ? "an " : "a ") + type
+        }
+        if !named.isEmpty { return "mustn't be \(list(named, "or"))" }
+      }
       return "mustn't match `not`"
     }
 
-    /// The `if` schema as a condition: "`status` is "Rejected" and `reason` is present".
-    private static func describe(_ condition: ResolvedSchema) -> String {
-      let clauses = Self.clauses(condition, prefix: "")
-      if !clauses.isEmpty { return list(clauses, "and") }
-      return condition.object?["description"]?.value?.string ?? "the `if` schema matches"
-    }
+  }
 
-    private static func clauses(_ schema: ResolvedSchema, prefix: String) -> [String] {
-      guard case .object(let object) = schema else { return [] }
-      var clauses: [String] = []
-      var mentioned: Set<String> = []
-      for (name, property) in object["properties"]?.schemaMap ?? [:] {
-        let path = prefix + name
-        guard case .object(let inner) = property else { continue }
-        if let values = inner["const"]?.value.map({ [$0] }) ?? inner["enum"]?.value?.array {
-          let comparison =
-            values.count == 1
-            ? "is \(Wording.literal(values[0]))"
-            : "is one of \(list(values.map(Wording.literal), "or"))"
-          clauses.append("\(Wording.code(path)) \(comparison)")
-          mentioned.insert(name)
-        } else if inner["properties"] != nil {
-          let nested = Self.clauses(property, prefix: path + ".")
-          clauses += nested
-          if !nested.isEmpty { mentioned.insert(name) }
-        }
-      }
-      for name in object["required"]?.value?.array?.compactMap(\.string) ?? []
-      where !mentioned.contains(name) {
-        clauses.append("\(Wording.code(prefix + name)) is present")
-      }
-      return clauses
-    }
+  // MARK: - Conditions
 
-    /// What a `then`, `else` or variant asks for: "`reason` is required; `note` isn't allowed".
-    private static func effects(_ schema: ResolvedSchema) -> String? {
+  /// A schema read for its wording only: its keywords, its `$ref` target's and its `allOf`
+  /// members', merged. Fragments met aren't registered, since no node is built for them.
+  private struct Resolved {
+    var facts = Facts()
+    var description: String?
+    var rejectsAll = false
+    /// The `$ref` targets merged in, and those already merged on the way here.
+    var visited: Set<NodeLocation> = []
+  }
+
+  /// `visited` holds the `$ref` targets already merged on the way here, which aren't merged
+  /// again, so a recursive schema such as a tree ends.
+  private func merged(_ schemas: [ResolvedSchema], visited: Set<NodeLocation> = []) -> Resolved {
+    var result = Resolved()
+    var visited = visited
+    func add(_ schema: ResolvedSchema) {
       guard case .object(let object) = schema else {
-        return Self.isForbidden(schema) ? "nothing is allowed" : nil
+        if Facts.isForbidden(schema) { result.rejectsAll = true }
+        return
       }
-      var effects: [String] = []
-      if let fields = object["required"]?.value?.array?.compactMap(\.string), !fields.isEmpty {
-        effects.append(Wording.required(fields))
-      }
-      var forbidden: [String] = []
-      for (name, property) in object["properties"]?.schemaMap ?? [:] {
-        if isForbidden(property) {
-          forbidden.append(name)
-        } else if case .object(let inner) = property {
-          var facts = Facts()
-          facts.add(inner, definedIn: nil, path: [])
-          effects += facts.constraintPhrases(isObject: false).map { "\(Wording.code(name)) \($0)" }
+      if Facts.isForbidden(schema) { result.rejectsAll = true }
+      result.description = result.description ?? object["description"]?.value?.string
+      result.facts.add(object, definedIn: nil, path: [])
+      if let reference = object.reference {
+        switch reference.target {
+        case .expanded(let origin, let target) where visited.insert(origin.location).inserted:
+          add(target)
+        case .link(let origin), .recursive(let origin):
+          if visited.insert(origin.location).inserted,
+            let target = resolver.schema(at: origin.location)
+          {
+            add(target)
+          }
+        case .expanded, .unresolved:
+          break
         }
       }
-      if !forbidden.isEmpty { effects.append(Wording.forbidden(forbidden)) }
-      var own = Facts()
-      own.add(
-        SchemaObject(
-          location: object.location,
-          keywords: object.keywords.filter { $0.key != "properties" && $0.key != "required" }),
-        definedIn: nil, path: [])
-      effects += own.constraintPhrases(isObject: true).map { "it \($0)" }
-      return effects.isEmpty ? nil : effects.joined(separator: "; ")
+      for member in object["allOf"]?.schemas ?? [] { add(member) }
     }
+    schemas.forEach(add)
+    result.visited = visited
+    return result
+  }
+
+  /// `present` holds the fields the object itself requires, which a condition can't find missing.
+  private func conditionRules(_ conditions: [Facts.Condition], present: Set<String>) -> [Rule] {
+    conditions.map { condition in
+      var text = "When \(describe(condition.condition, present: present))"
+      text += ": \(condition.then.flatMap(effects) ?? "nothing more is needed")"
+      if let otherwise = condition.otherwise.flatMap(effects) {
+        text += ". Otherwise: \(otherwise)"
+      }
+      return Rule(.condition, text)
+    }
+  }
+
+  /// The `if` schema as a condition: "`status` is "Rejected" and `reason` is present".
+  private func describe(_ condition: ResolvedSchema, present: Set<String>) -> String {
+    let resolved = merged([condition])
+    let clauses = clauses(
+      resolved.facts, prefix: "", visited: resolved.visited, present: present)
+    if !clauses.isEmpty { return list(clauses, "and") }
+    return resolved.description ?? "the `if` schema matches"
+  }
+
+  /// `present` holds the fields known to be there. `properties` in an `if` also matches when
+  /// the field is missing, so any other field is "missing or …".
+  private func clauses(
+    _ facts: Facts, prefix: String, visited: Set<NodeLocation>, present: Set<String>
+  ) -> [String] {
+    var clauses: [String] = []
+    var mentioned: Set<String> = []
+    let present = present.union(facts.required)
+    for (name, parts) in facts.properties {
+      let path = prefix + name
+      let canBeMissing = !present.contains(name)
+      let resolved = merged(parts.map(\.schema), visited: visited)
+      let inner = resolved.facts
+      if let values = inner.allowed {
+        let comparison =
+          values.count == 1
+          ? "is \(Wording.literal(values[0]))"
+          : "is one of \(list(values.map(Wording.literal), "or"))"
+        clauses.append(
+          "\(Wording.code(path)) \(canBeMissing ? "is missing or " : "")\(comparison)")
+        mentioned.insert(name)
+      } else if !inner.properties.isEmpty {
+        // A missing parent matches as well, so nothing below it is known to be there.
+        let nested = self.clauses(
+          canBeMissing ? inner.withoutRequired : inner, prefix: path + ".",
+          visited: resolved.visited, present: [])
+        clauses += nested
+        if !nested.isEmpty { mentioned.insert(name) }
+      }
+    }
+    for name in facts.required where !mentioned.contains(name) {
+      clauses.append("\(Wording.code(prefix + name)) is present")
+    }
+    return clauses
+  }
+
+  /// What a `then` or `else` asks for: "`reason` is required; `note` isn't allowed".
+  private func effects(_ schema: ResolvedSchema) -> String? {
+    let resolved = merged([schema])
+    if resolved.rejectsAll { return "nothing is allowed" }
+    let facts = resolved.facts
+    var effects: [String] = []
+    if !facts.required.isEmpty { effects.append(Wording.required(Array(facts.required))) }
+    for (name, parts) in facts.properties where !facts.forbidden.contains(name) {
+      let inner = merged(parts.map(\.schema)).facts
+      effects += inner.constraintPhrases(isObject: false).map { "\(Wording.code(name)) \($0)" }
+    }
+    let forbidden = Array(facts.properties.keys.filter(facts.forbidden.contains))
+    if !forbidden.isEmpty { effects.append(Wording.forbidden(forbidden)) }
+    effects += facts.constraintPhrases(isObject: true).map { "it \($0)" }
+    return effects.isEmpty ? nil : effects.joined(separator: "; ")
   }
 
   // MARK: - Annotations

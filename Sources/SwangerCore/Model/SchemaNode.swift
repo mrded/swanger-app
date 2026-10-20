@@ -30,7 +30,8 @@ public struct SchemaNode: Equatable, Sendable {
     case recursive(FragmentRef)
     /// A `$ref` that couldn't be followed.
     case unresolved(ref: String, failure: RefFailure)
-    /// The `false` schema: no value is valid.
+    /// No value is valid: the `false` schema, `not: {}`, or `allOf` members whose types don't
+    /// overlap.
     case never
   }
 
@@ -44,6 +45,10 @@ public struct SchemaNode: Equatable, Sendable {
   public var isTightened = false
   /// `null` is allowed as well as the kind's own values.
   public var allowsNull = false
+  /// The object or array shape comes from keywords like `properties` or `items`, with no `type`.
+  /// It's shown as what the spec means, but JSON Schema accepts values of other types too, and
+  /// the keywords don't apply to them.
+  public var isShapeInferred = false
   public var title: String?
   public var description: String?
   public var examples: [JSONValue] = []
@@ -53,6 +58,12 @@ public struct SchemaNode: Equatable, Sendable {
   public var isWriteOnly = false
   /// Everything the value must satisfy beyond its shape, in plain English.
   public var rules: [Rule] = []
+  /// `oneOf` and `anyOf` the value must match as well as its own shape, such as the variants of
+  /// an object with common fields. A node that is only a choice has it as its kind instead.
+  public var choices: [ChoiceSchema] = []
+  /// Other fragments merged into this one through `$ref` or `allOf`, such as `Name` in
+  /// `{$ref: Name, maxLength: 10}`, and the ones merged into those in turn.
+  public var bases: [FragmentRef] = []
 
   public init(kind: Kind, location: NodeLocation) {
     self.kind = kind
@@ -96,7 +107,11 @@ public struct SchemaNode: Equatable, Sendable {
     case .unresolved: base = "unresolved"
     case .never: base = "nothing"
     }
-    return allowsNull && scalar?.types.contains("null") != true ? "\(base) or null" : base
+    // Said once: a null type, or a variant that already allows null, says it.
+    let saysNull =
+      scalar?.types.contains("null") == true
+      || choice?.variants.contains { $0.node.allowsNull } == true
+    return allowsNull && !saysNull ? "\(base) or null" : base
   }
 }
 

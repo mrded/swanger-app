@@ -161,6 +161,73 @@ import Testing
       ])
   }
 
+  @Test func fragmentsInUnlistedFieldsAreUsed() throws {
+    let maps = try Spec.load(Fixtures.url("model/composed.yaml"))
+    let prices = try root("setPrices request", in: maps.requestSchemas)
+    let price = try #require(maps.fragments.first { $0.name == "Price" })
+    let note = try #require(maps.fragments.first { $0.name == "Note" })
+
+    #expect(maps.fragmentIndex.usages(of: price.reference).map(\.path.description) == ["*"])
+    #expect(maps.fragmentIndex.usages(of: note.reference).map(\.path.description) == ["/^x-/"])
+    // `currency` and Price's `amount`; Price's minimum and Note's length.
+    #expect(prices.stats == RootStats(fields: 2, fragments: 2, rules: 2))
+  }
+
+  @Test func fragmentWithoutFieldsIsUsedByTheOneItTightens() throws {
+    let composed = try Spec.load(Fixtures.url("model/composed.yaml"))
+    let rename = try root("ShortName", in: composed.requestSchemas)
+    let name = try #require(composed.fragments.first { $0.name == "Name" })
+
+    #expect(composed.fragmentIndex.roots(using: name.reference).first == rename.id)
+    #expect(rename.stats == RootStats(fields: 0, fragments: 1, rules: 1))
+  }
+
+  @Test func basesOfBasesAreUsed() throws {
+    let composed = try Spec.load(Fixtures.url("model/composed.yaml"))
+    let nickname = try root("TinyName", in: composed.requestSchemas)
+    let name = try #require(composed.fragments.first { $0.name == "Name" })
+
+    #expect(composed.fragmentIndex.roots(using: name.reference).contains(nickname.id))
+    // ShortName and Name.
+    #expect(nickname.stats == RootStats(fields: 0, fragments: 2, rules: 1))
+  }
+
+  @Test func filesWithTheSameNameAreDifferentRoots() throws {
+    let composed = try Spec.load(Fixtures.url("model/composed.yaml"))
+    let models = composed.requestSchemas.filter {
+      $0.node.location.file.lastPathComponent == "model.yaml"
+    }
+
+    #expect(models.count == 2)
+    #expect(models.map { $0.operations.map(\.path) } == [["/customers"], ["/orders"]])
+    #expect(models.map { $0.node.object?.fields.map(\.name) ?? [] } == [["email"], ["total"]])
+  }
+
+  @Test func sharedRootKeepsEveryUsesExamples() throws {
+    let composed = try Spec.load(Fixtures.url("model/composed.yaml"))
+    let name = try root("Name", in: composed.requestSchemas)
+
+    // In the order the operations are read: PUT, then POST.
+    #expect(name.examples.map(\.value) == ["Grace", "Ada"])
+  }
+
+  @Test func unusedAliasesAreNotLoaded() throws {
+    let composed = try Spec.load(Fixtures.url("model/composed.yaml"))
+
+    #expect(composed.warnings.isEmpty)
+    #expect(!composed.referencedFiles.contains { $0.lastPathComponent == "missing.yaml" })
+  }
+
+  @Test func variantsBesideCommonFieldsAreUsed() throws {
+    let composed = try Spec.load(Fixtures.url("model/composed.yaml"))
+    let pay = try root("pay request", in: composed.requestSchemas)
+    let card = try #require(composed.fragments.first { $0.name == "Card" })
+
+    #expect(composed.fragmentIndex.usages(of: card.reference).map(\.path.description) == ["(Card)"])
+    // `id`, Card's `number` and Cash's `change`; the choice and Card's pattern.
+    #expect(pay.stats == RootStats(fields: 3, fragments: 2, rules: 2))
+  }
+
   // MARK: - Helpers
 
   private func root(_ name: String, in roots: [RootSchema]) throws -> RootSchema {

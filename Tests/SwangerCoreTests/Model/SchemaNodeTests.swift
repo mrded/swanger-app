@@ -23,6 +23,7 @@ import Testing
     ("{type: number, minimum: 1, maximum: 9}", "must be between 1 and 9"),
     ("{type: number, exclusiveMinimum: 0}", "must be more than 0"),
     ("{type: number, exclusiveMaximum: 1.5}", "must be less than 1.5"),
+    ("{type: number, not: {type: integer}}", "mustn't be an integer"),
     ("{type: integer, multipleOf: 5}", "must be a multiple of 5"),
     ("{type: array, minItems: 1}", "needs at least 1 item"),
     ("{type: array, maxItems: 3}", "allows at most 3 items"),
@@ -47,21 +48,193 @@ import Testing
     ("{type: string}", "string"),
     ("{type: [string, 'null']}", "string or null"),
     ("{type: [string, integer]}", "string or integer"),
+    ("{type: [object, string]}", "one of object or string"),
+    ("{type: [array, object]}", "one of array or object"),
     ("{type: 'null'}", "null"),
     ("{}", "any"),
     ("{const: card}", "string"),
+    ("{enum: [null, card]}", "string or null"),
+    ("{const: null}", "null"),
     ("{type: array, items: {type: integer}}", "array of integer"),
     ("{type: object}", "object"),
+    ("{type: string, properties: {a: {type: integer}}}", "string"),
+    ("{type: array, items: {type: string}, properties: {a: {}}}", "array of string"),
+    ("{type: 'null', properties: {a: {type: integer}}}", "null"),
+    ("{type: 'null', items: {type: string}}", "null"),
+    ("{type: string, oneOf: [{type: string}, {type: integer}]}", "one of string"),
+    ("{type: string, oneOf: [{type: integer}, {type: boolean}]}", "nothing"),
+    ("{type: 'null', anyOf: [{type: [string, 'null']}]}", "any of null"),
+    (
+      "{type: [string, 'null'], anyOf: [{type: [object, 'null']}, {type: string}]}",
+      "any of null or string"
+    ),
+    ("{type: number, anyOf: [{maxLength: 2}, {type: integer}]}", "any of number or integer"),
     ("{properties: {a: {type: string}}}", "object"),
     ("{oneOf: [{type: string}, {type: integer}]}", "one of string or integer"),
     ("{allOf: [{type: number}, {type: integer}]}", "integer"),
     ("false", "nothing"),
+    ("{allOf: [{type: string}, {type: integer}]}", "nothing"),
+    ("{allOf: [{type: [string, 'null']}, {type: [integer, 'null']}]}", "null"),
+    ("{allOf: [{enum: [a]}, {enum: [b]}]}", "nothing"),
+    ("{allOf: [{type: integer}, {enum: [y]}]}", "nothing"),
+    ("{allOf: [{type: string}, {not: {type: string}}]}", "nothing"),
+    ("{type: [string, 'null'], not: {type: 'null'}}", "string"),
+    ("{type: object, required: [b], properties: {b: false}}", "nothing"),
+    ("{required: [b], properties: {b: false}}", "object"),
+    ("{type: [object, 'null'], required: [b], properties: {b: false}}", "null"),
+    ("{not: {}}", "nothing"),
+    ("{not: true}", "nothing"),
+    ("{not: {description: Anything.}}", "nothing"),
+    ("{type: [string, 'null'], not: {}}", "nothing"),
+    ("{type: array, items: {not: {}}}", "array of nothing"),
   ])
   func typeDescriptions(schema: String, type: String) throws {
     #expect(try node(schema).shapeDescription == type)
   }
 
+  @Test func typesThatDontOverlapAllowNothing() throws {
+    let schema = try node("{allOf: [{type: string, maxLength: 5}, {type: integer}]}")
+
+    #expect(schema.kind == .never)
+    #expect(schema.rules.isEmpty)
+  }
+
+  @Test func typeUnionKeepsEachTypesKeywords() throws {
+    let schema = try node(
+      """
+      type: [object, string, integer, 'null']
+      properties: {a: {type: string}}
+      maxLength: 3
+      minimum: 1
+      not: {const: x}
+      """)
+    let variants = try #require(schema.choice?.variants)
+
+    #expect(variants.map(\.name) == ["object", "string or integer"])
+    #expect(variants[0].node.object?.fields.map(\.name) == ["a"])
+    #expect(variants[0].node.rules.isEmpty)
+    #expect(
+      variants[1].node.rules.map(\.text) == ["allows at most 3 characters", "must be at least 1"])
+    #expect(schema.allowsNull)
+    #expect(schema.rules.map(\.text) == [#"mustn't be "x""#])
+  }
+
+  @Test func closedObjectInAllOfOnlyAllowsItsOwnFields() throws {
+    let schema = try node(
+      """
+      allOf:
+        - {type: object, properties: {a: {}}, patternProperties: {'^x-': {}}, additionalProperties: false}
+        - {properties: {b: {}, x-note: {}}}
+      """)
+    let object = try #require(schema.object)
+
+    #expect(object.fields.map(\.name) == ["a", "b", "x-note"])
+    #expect(object.fields.map(\.isForbidden) == [false, true, false])
+  }
+
+  @Test func otherFieldsSchemaInAllOfAppliesToTheOtherMembersFields() throws {
+    let schema = try node(
+      """
+      allOf:
+        - {properties: {a: {type: string}}, additionalProperties: {type: integer}}
+        - {properties: {a: {}, b: {type: string}}}
+      """)
+
+    #expect(schema.object?[field: "a"]?.node.shapeDescription == "string")
+    #expect(schema.object?[field: "b"]?.node.shapeDescription == "nothing")
+  }
+
+  @Test func namedFieldMatchingAPatternGetsItsConstraints() throws {
+    let schema = try node(
+      "{type: object, properties: {code: {type: string}}, patternProperties: {'^code$': {maxLength: 2}}}"
+    )
+
+    #expect(
+      schema.object?[field: "code"]?.node.rules.map(\.text) == ["allows at most 2 characters"])
+  }
+
+  @Test func refToASchemaThatRejectsEverythingAllowsNothing() throws {
+    let nodes = try components(
+      """
+      Nothing: {not: {}}
+      S: {$ref: '#/components/schemas/Nothing'}
+      """)
+
+    #expect(try nodes("S").kind == .never)
+  }
+
+  @Test func itemsApplyToTheTuplePositionsTheyCover() throws {
+    let schema = try node(
+      """
+      allOf:
+        - {prefixItems: [{type: string}, {}]}
+        - {prefixItems: [{maxLength: 3}], items: {type: integer}}
+      """)
+    let array = try #require(schema.array)
+
+    // The second member's `items` covers both its own trailing positions.
+    #expect(array.prefixItems.map(\.shapeDescription) == ["string", "integer"])
+    #expect(array.items?.shapeDescription == "integer")
+  }
+
+  @Test func itemsCoveringAStringPositionAllowNothingThere() throws {
+    let schema = try node("{allOf: [{prefixItems: [{type: string}]}, {items: {type: integer}}]}")
+
+    #expect(schema.array?.prefixItems.map(\.shapeDescription) == ["nothing"])
+  }
+
+  @Test func tuplePositionsMergeAcrossAllOf() throws {
+    let schema = try node(
+      """
+      allOf:
+        - {type: array, prefixItems: [{type: string}]}
+        - {prefixItems: [{maxLength: 5}, {type: integer}]}
+      """)
+    let positions = try #require(schema.array?.prefixItems)
+
+    #expect(positions.map(\.shapeDescription) == ["string", "integer"])
+    #expect(positions.first?.rules.map(\.text) == ["allows at most 5 characters"])
+  }
+
   // MARK: - Choices
+
+  @Test func requiredFieldsBesideAChoiceAreKept() throws {
+    let schema = try node(
+      "{type: object, required: [id], anyOf: [{required: [email]}, {required: [phone]}]}")
+
+    #expect(schema.object?.fields.map(\.name) == ["id"])
+    #expect(schema.object?[field: "id"]?.isRequired == true)
+    #expect(schema.rules.map(\.text) == ["Needs at least one of `email` or `phone`"])
+  }
+
+  @Test func closedObjectBesideAChoiceKeepsItsRule() throws {
+    let schema = try node(
+      "{additionalProperties: false, oneOf: [{required: [email]}, {required: [phone]}]}")
+
+    #expect(schema.object != nil)
+    #expect(schema.rules.map(\.text).contains("allows no other fields"))
+  }
+
+  @Test func variantsBesideCommonFieldsAreKept() throws {
+    let nodes = try components(
+      """
+      Payment:
+        type: object
+        properties:
+          id: {type: string}
+        oneOf:
+          - $ref: '#/components/schemas/Card'
+          - $ref: '#/components/schemas/Cash'
+      Card: {type: object, required: [number], properties: {number: {type: string}}}
+      Cash: {type: object, properties: {change: {type: boolean}}}
+      """)
+    let payment = try nodes("Payment")
+    let variants = try #require(payment.choices.first?.variants)
+
+    #expect(payment.object?.fields.map(\.name) == ["id"])
+    #expect(variants.map(\.name) == ["Card", "Cash"])
+    #expect(variants.first?.node.object?[field: "number"]?.isRequired == true)
+  }
 
   @Test func choiceWithoutDistinguishingFieldsNamesItsVariants() throws {
     let schema = try node("{anyOf: [{type: string}, {type: integer}]}")
@@ -137,9 +310,65 @@ import Testing
 
     #expect(
       schema.rules.map(\.text) == [
-        #"When `address.country` is one of "GB" or "IE" and `vatNumber` is present: "#
+        #"When `address.country` is missing or is one of "GB" or "IE" and `vatNumber` is present: "#
           + "`postcode` is required; `postcode` allows at most 8 characters"
       ])
+  }
+
+  @Test func referencedBranchesAreDescribed() throws {
+    let nodes = try components(
+      """
+      S:
+        type: object
+        if: {$ref: '#/components/schemas/IsRejected'}
+        then: {$ref: '#/components/schemas/NeedsReason'}
+        else: {allOf: [{$ref: '#/components/schemas/NeedsNote'}, {properties: {note: {maxLength: 9}}}]}
+      IsRejected: {properties: {status: {const: Rejected}}}
+      NeedsReason: {required: [reason]}
+      NeedsNote: {required: [note]}
+      """)
+
+    #expect(
+      try nodes("S").rules.map(\.text) == [
+        #"When `status` is missing or is "Rejected": `reason` is required. "#
+          + "Otherwise: `note` is required; `note` allows at most 9 characters"
+      ])
+  }
+
+  @Test func recursiveConditionEnds() throws {
+    let nodes = try components(
+      """
+      S: {type: object, if: {$ref: '#/components/schemas/Node'}, then: {required: [x]}}
+      Node: {type: object, properties: {child: {$ref: '#/components/schemas/Node'}}}
+      """)
+
+    #expect(try nodes("S").rules.map(\.text) == ["When the `if` schema matches: `x` is required"])
+  }
+
+  @Test func optionalFieldInAConditionCanBeMissing() throws {
+    let schema = try node(
+      """
+      type: object
+      if: {properties: {status: {const: Rejected}}}
+      then: {required: [reason]}
+      """)
+
+    #expect(
+      schema.rules.map(\.text) == [
+        #"When `status` is missing or is "Rejected": `reason` is required"#
+      ])
+  }
+
+  @Test func fieldTheObjectRequiresCantBeMissingInACondition() throws {
+    let schema = try node(
+      """
+      type: object
+      required: [status]
+      if: {properties: {status: {const: Rejected}}}
+      then: {required: [reason]}
+      """)
+
+    #expect(schema.rules.map(\.text) == [#"When `status` is "Rejected": `reason` is required"#])
   }
 
   @Test func conditionFallsBackToItsDescription() throws {

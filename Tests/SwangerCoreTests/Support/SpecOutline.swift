@@ -100,4 +100,10 @@ private func render(
   case .scalar, .recursive, .unresolved, .never:
     break
   }
+  for choice in node.choices {
+    for variant in choice.variants {
+      let value = variant.discriminatorValue.map { " = \($0)" } ?? ""
+      render(variant.node, label: "(\(variant.name)\(value))", depth: depth + 1, into: &lines)
+    }
+  }
 }

@@ -73,10 +73,11 @@ public struct Spec: Sendable {
 
 public struct RootID: Hashable, Sendable, CustomStringConvertible {
   public let direction: RootSchema.Direction
-  /// The fragment's location, or the body schema's when it's written inline.
-  public let key: String
+  /// The fragment's location, or the body schema's when it's written inline. The whole file URL
+  /// counts, so files with the same name in different folders are different roots.
+  public let location: NodeLocation
 
-  public var description: String { "\(direction) \(key)" }
+  public var description: String { "\(direction) \(location)" }
 }
 
 /// A request or response body schema.
@@ -163,6 +164,8 @@ private struct RootFinder {
     var node: SchemaNode
     var operations: [OperationUse]
     var mediaTypes: [NodeLocation]
+    /// Schema examples from every use, since each can add its own beside the `$ref`.
+    var schemaExamples: [JSONValue] = []
   }
 
   func roots() -> [RootSchema] {
@@ -204,10 +207,10 @@ private struct RootFinder {
           let id: RootID
           let name: String
           if let fragment = node.fragment, !node.isTightened {
-            id = RootID(direction: direction, key: fragment.id.description)
+            id = RootID(direction: direction, location: fragment.id)
             name = fragment.name
           } else {
-            id = RootID(direction: direction, key: schema.description)
+            id = RootID(direction: direction, location: schema)
             let operationName = operationId ?? "\(use.method) \(path)"
             name = [operationName, status, direction.rawValue].compactMap(\.self).joined(
               separator: " ")
@@ -218,6 +221,10 @@ private struct RootFinder {
           }
           candidates[id]?.operations.append(use)
           candidates[id]?.mediaTypes.append(media)
+          for example in node.examples
+          where candidates[id]?.schemaExamples.contains(example) == false {
+            candidates[id]?.schemaExamples.append(example)
+          }
         }
       }
     }
@@ -244,7 +251,7 @@ private struct RootFinder {
   }
 
   private func examples(of candidate: Candidate) -> [SchemaExample] {
-    var examples = candidate.node.examples.map {
+    var examples = candidate.schemaExamples.map {
       SchemaExample(name: nil, value: $0, source: .schema)
     }
     func add(_ example: SchemaExample) {
@@ -290,6 +297,13 @@ extension SchemaNode {
         let inside = field.definedIn ?? inner
         field.node.walk(path: path.appending(.field(field.name)), inside: inside, visit)
       }
+      for pattern in object.patternFields {
+        pattern.node.walk(
+          path: path.appending(.patternField(pattern.pattern)), inside: inner, visit)
+      }
+      if case .schema(let other) = object.additionalFields {
+        other.walk(path: path.appending(.otherFields), inside: inner, visit)
+      }
     case .array(let array):
       for item in array.prefixItems + (array.items.map { [$0] } ?? []) {
         item.walk(path: path.appending(.items), inside: inner, visit)
@@ -301,13 +315,20 @@ extension SchemaNode {
     case .scalar, .recursive, .unresolved, .never:
       break
     }
+    for choice in choices {
+      for variant in choice.variants {
+        variant.node.walk(path: path.appending(.variant(variant.name)), inside: inner, visit)
+      }
+    }
   }
 }
 
 extension SchemaNode {
-  /// The fragment this node is, and the ones its fields come from through `allOf`.
+  /// The fragment this node is, the ones merged into it, and the ones its fields come from
+  /// through `allOf`.
   var fragmentsUsed: [FragmentRef] {
     var used = fragment.map { [$0] } ?? []
+    for base in bases where !used.contains(base) { used.append(base) }
     for field in object?.fields ?? [] {
       if let definedIn = field.definedIn, !used.contains(definedIn) { used.append(definedIn) }
     }

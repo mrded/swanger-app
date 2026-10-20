@@ -1,7 +1,7 @@
 import OrderedCollections
 
 /// The way from a root to a value inside it: `customer.address`, `lines[].sku`,
-/// `payment(Card).cardNumber`.
+/// `payment(Card).cardNumber`, `metadata.*` or `extensions./^x-/`.
 public struct FieldPath: Hashable, Sendable, CustomStringConvertible {
   public enum Component: Hashable, Sendable {
     case field(String)
@@ -9,6 +9,10 @@ public struct FieldPath: Hashable, Sendable, CustomStringConvertible {
     case items
     /// One variant of a `oneOf` or `anyOf`, by name.
     case variant(String)
+    /// The value of any field not listed, from `additionalProperties`.
+    case otherFields
+    /// The value of a field whose name matches a `patternProperties` pattern.
+    case patternField(String)
   }
 
   public var components: [Component]
@@ -23,7 +27,7 @@ public struct FieldPath: Hashable, Sendable, CustomStringConvertible {
 
   public var isEmpty: Bool { components.isEmpty }
 
-  /// The field names alone, without items and variants.
+  /// The field names alone, without items, variants and unlisted fields.
   public var fieldNames: [String] {
     components.compactMap { if case .field(let name) = $0 { name } else { nil } }
   }
@@ -35,6 +39,8 @@ public struct FieldPath: Hashable, Sendable, CustomStringConvertible {
       case .field(let name): text += text.isEmpty ? name : ".\(name)"
       case .items: text += "[]"
       case .variant(let name): text += "(\(name))"
+      case .otherFields: text += text.isEmpty ? "*" : ".*"
+      case .patternField(let pattern): text += text.isEmpty ? "/\(pattern)/" : "./\(pattern)/"
       }
     }
     return text
