@@ -287,9 +287,11 @@ final class SchemaBuilder {
       facts, home: identity ?? home, location: identity?.id ?? location, escapes: &escapes,
       choiceRules: &choiceRules, extraChoices: &extraChoices)
     var node = SchemaNode(kind: kind, location: identity?.id ?? location)
+    // Null has to get past both the `type` and any allowed values.
     node.allowsNull =
       kind != .never
-      && (facts.types?.contains("null") ?? facts.allowed?.contains(.null) ?? false)
+      && (facts.types?.contains("null") ?? true)
+      && (facts.allowed?.contains(.null) ?? (facts.types != nil))
     node.choices = extraChoices
     node.bases = pieces.merged.filter { $0 != identity }.elements
     if facts.types == nil, node.object != nil || node.array != nil { node.isShapeInferred = true }
@@ -1254,38 +1256,74 @@ final class SchemaBuilder {
   /// The `if` schema as a condition: "`status` is "Rejected" and `reason` is present".
   private func describe(_ condition: ResolvedSchema, present: Set<String>) -> String {
     let resolved = merged([condition])
-    let clauses = clauses(
-      resolved.facts, prefix: "", visited: resolved.visited, present: present)
-    if !clauses.isEmpty { return list(clauses, "and") }
+    if let clauses = clauses(
+      resolved.facts, prefix: "", visited: resolved.visited, present: present),
+      !clauses.isEmpty
+    {
+      return list(clauses, "and")
+    }
     return resolved.description ?? "the `if` schema matches"
   }
 
+  /// The `if` schema's checks, field by field: "`status` is "Rejected"", "`amount` is at least
+  /// 100". `nil` when it has a check this can't word, so a condition is never shown as matching
+  /// more than it does.
+  ///
   /// `present` holds the fields known to be there. `properties` in an `if` also matches when
-  /// the field is missing, so any other field is "missing or …".
+  /// the field is missing, so any other field is "missing or …". With `ownChecked`, the checks on
+  /// the object itself were already worded by its parent.
   private func clauses(
-    _ facts: Facts, prefix: String, visited: Set<NodeLocation>, present: Set<String>
-  ) -> [String] {
+    _ facts: Facts, prefix: String, visited: Set<NodeLocation>, present: Set<String>,
+    ownChecked: Bool = false
+  ) -> [String]? {
+    // Of the checks on the object itself, only `type: object` goes without saying.
+    guard facts.choices.isEmpty, facts.conditions.isEmpty, facts.patternProperties.isEmpty,
+      facts.additional.isEmpty, facts.unevaluated.isEmpty
+    else { return nil }
+    if !ownChecked {
+      guard facts.types.map({ $0 == ["object"] }) ?? true, Self.ownChecks(facts).isEmpty else {
+        return nil
+      }
+    }
     var clauses: [String] = []
     var mentioned: Set<String> = []
     let present = present.union(facts.required)
     for (name, parts) in facts.properties {
-      let path = prefix + name
+      let path = Wording.code(prefix + name)
       let canBeMissing = !present.contains(name)
       let resolved = merged(parts.map(\.schema), visited: visited)
-      let inner = resolved.facts
-      if let values = inner.allowed {
-        let comparison =
-          values.count == 1
-          ? "is \(Wording.literal(values[0]))"
-          : "is one of \(list(values.map(Wording.literal), "or"))"
-        clauses.append(
-          "\(Wording.code(path)) \(canBeMissing ? "is missing or " : "")\(comparison)")
+      if facts.forbidden.contains(name) || resolved.rejectsAll {
+        clauses.append("\(path) is missing")
         mentioned.insert(name)
-      } else if !inner.properties.isEmpty {
+        continue
+      }
+      let inner = resolved.facts
+      guard inner.choices.isEmpty, inner.conditions.isEmpty else { return nil }
+      var checks: [String] = []
+      if let values = inner.allowed {
+        checks.append(
+          values.count == 1
+            ? "is \(Wording.literal(values[0]))"
+            : "is one of \(list(values.map(Wording.literal), "or"))")
+      } else if let types = inner.types, types != ["object"] || inner.properties.isEmpty {
+        checks.append("is \(Wording.types(types))")
+      }
+      for phrase in Self.ownChecks(inner) {
+        guard let check = Self.conditionCheck(phrase) else { return nil }
+        checks.append(check)
+      }
+      if !checks.isEmpty {
+        clauses.append(
+          "\(path) \(canBeMissing ? "is missing or " : "")\(checks.joined(separator: " and "))")
+        mentioned.insert(name)
+      }
+      if !inner.properties.isEmpty || !inner.required.isEmpty {
         // A missing parent matches as well, so nothing below it is known to be there.
-        let nested = self.clauses(
-          canBeMissing ? inner.withoutRequired : inner, prefix: path + ".",
-          visited: resolved.visited, present: [])
+        guard
+          let nested = self.clauses(
+            canBeMissing ? inner.withoutRequired : inner, prefix: prefix + name + ".",
+            visited: resolved.visited, present: [], ownChecked: true)
+        else { return nil }
         clauses += nested
         if !nested.isEmpty { mentioned.insert(name) }
       }
@@ -1294,6 +1332,32 @@ final class SchemaBuilder {
       clauses.append("\(Wording.code(prefix + name)) is present")
     }
     return clauses
+  }
+
+  /// The constraint phrases for a schema's own value, without its allowed values and fields.
+  private static func ownChecks(_ facts: Facts) -> [String] {
+    var own = facts
+    own.allowed = nil
+    own.properties = [:]
+    own.required = []
+    own.forbidden = []
+    return own.constraintPhrases(
+      isObject: facts.types?.contains("object") ?? !facts.properties.isEmpty)
+  }
+
+  /// A constraint phrase as a check in a condition: "must be at least 100" is "is at least 100".
+  /// `nil` for a phrase with no such wording.
+  private static func conditionCheck(_ phrase: String) -> String? {
+    let rewordings = [
+      ("must be ", "is "), ("must have ", "has "), ("needs at least ", "has at least "),
+      ("allows at most ", "has at most "), ("must match `", "matches `"), ("mustn't be ", "isn't "),
+      ("mustn't have ", "doesn't have "), ("allows no other fields", "has no other fields"),
+      ("items must all be different", "has items that are all different"),
+    ]
+    for (from, to) in rewordings where phrase.hasPrefix(from) {
+      return to + phrase.dropFirst(from.count)
+    }
+    return nil
   }
 
   /// What a `then` or `else` asks for: "`reason` is required; `note` isn't allowed".

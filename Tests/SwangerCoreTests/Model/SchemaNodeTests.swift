@@ -69,6 +69,8 @@ import Testing
     ("{const: card}", "string"),
     ("{enum: [null, card]}", "string or null"),
     ("{const: null}", "null"),
+    ("{type: [string, 'null'], enum: [a]}", "string"),
+    ("{type: [string, 'null'], enum: [a, null]}", "string or null"),
     ("{type: array, items: {type: integer}}", "array of integer"),
     ("{type: object}", "object"),
     ("{type: string, properties: {a: {type: integer}}}", "string"),
@@ -442,6 +444,31 @@ import Testing
         #"When `kind` is "count": `value` must be an integer. "#
           + "Otherwise: `value` must be a string or null"
       ])
+  }
+
+  @Test func conditionIncludesEachFieldsConstraints() throws {
+    let schema = try node(
+      """
+      type: object
+      if: {required: [amount], properties: {amount: {type: integer, minimum: 100}}}
+      then: {required: [approval]}
+      """)
+
+    #expect(
+      schema.rules.map(\.text) == [
+        "When `amount` is an integer and is at least 100: `approval` is required"
+      ])
+  }
+
+  @Test func conditionThatCantBeFullyWordedSaysSo() throws {
+    let schema = try node(
+      """
+      type: object
+      if: {required: [amount], properties: {amount: {not: {multipleOf: 7}}}}
+      then: {required: [approval]}
+      """)
+
+    #expect(schema.rules.map(\.text) == ["When the `if` schema matches: `approval` is required"])
   }
 
   @Test func conditionFallsBackToItsDescription() throws {
