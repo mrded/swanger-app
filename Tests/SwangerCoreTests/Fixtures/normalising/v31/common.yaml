@@ -1,0 +1,9 @@
+Customer:
+  type: object
+  properties:
+    name:
+      type: string
+    email:
+      type: [string, 'null']
+      format: email
+      examples: [someone@example.com]

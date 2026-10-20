@@ -1,0 +1,51 @@
+openapi: 3.1.0
+info:
+  title: Orders
+  version: 1.0.0
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        content:
+          application/json:
+            example:
+              quantity: 2
+            schema:
+              $ref: '#/components/schemas/Order'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Order:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 100
+          examples: [2]
+        note:
+          type: [string, 'null']
+          maxLength: 140
+        status:
+          type: [string, 'null']
+          enum: [open, closed, null]
+        discount:
+          type: number
+          exclusiveMaximum: 1
+        customer:
+          $ref: './common.yaml#/Customer'
+          description: Who placed the order.
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku:
+                type: [string, 'null']
+      examples:
+        - quantity: 2
+          note: null
