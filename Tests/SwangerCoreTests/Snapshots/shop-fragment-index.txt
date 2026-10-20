@@ -1,0 +1,40 @@
+NewOrder
+  request NewOrder · (root) · direct
+  response Order · (root) · direct
+Customer
+  request NewOrder · customer · direct
+  response Order · customer · via NewOrder
+Address
+  request NewOrder · customer.address · via Customer
+  request NewOrder · deliveryAddress · direct
+  request NewOrder · billingAddress · direct
+  response Order · customer.address · via Customer
+  response Order · deliveryAddress · via NewOrder
+  response Order · billingAddress · via NewOrder
+Postcode
+  request NewOrder · customer.address.postcode · via Address
+  request NewOrder · deliveryAddress.postcode · via Address
+  request NewOrder · billingAddress.postcode · via Address
+  response Order · customer.address.postcode · via Address
+  response Order · deliveryAddress.postcode · via Address
+  response Order · billingAddress.postcode · via Address
+OrderLine
+  request NewOrder · lines[] · direct
+  response Order · lines[] · via NewOrder
+Money
+  request NewOrder · lines[].unitPrice · via OrderLine
+  response Order · lines[].unitPrice · via OrderLine
+Payment
+  request NewOrder · payment · direct
+  response Order · payment · via NewOrder
+Card
+  request NewOrder · payment(Card) · via Payment
+  response Order · payment(Card) · via Payment
+BankTransfer
+  request NewOrder · payment(BankTransfer) · via Payment
+  response Order · payment(BankTransfer) · via Payment
+Order
+  response Order · (root) · direct
+Category
+  response listCategories 200 response · [] · direct
+  response listCategories 200 response · [].subcategories[] · via Category

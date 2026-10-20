@@ -1,0 +1,246 @@
+Shop 2.0.0 (OpenAPI 3.1.0)
+
+# Request schemas
+
+## NewOrder
+used by: POST /orders [application/json]
+stats: 37 fields, 8 fragments, 26 rules
+example (schema): {"customer": {"name": "Ada", "phone": "+44 20 7946 0000"}, "lines": [{"sku": "ABC-1", "quantity": 1}], "payment": {"method": "bank-transfer", "sortCode": "12-34-56", "accountNumber": "12345678"}}
+example (mediaType "Paid by card"): {"customer": {"name": "Ada", "email": "ada@example.com"}, "lines": [{"sku": "ABC-1", "quantity": 2}], "payment": {"method": "card", "cardNumber": "4111111111111111", "expiry": "12/30"}}
+(root): NewOrder
+  - When `giftMessage` is present: `giftWrap` is required
+  customer*: Customer
+    - Needs exactly one of `email` or `phone`
+  lines*: array of OrderLine
+    - needs at least 1 item
+    []: OrderLine
+  payment*: Payment
+    - When `method` is "card": it's a `Card`
+    - When `method` is "bank-transfer": it's a `BankTransfer`
+  deliveryAddress: Address [tightened]
+    line1*: string
+      - allows at most 70 characters
+    line2: string
+    town: string
+    postcode*: Postcode
+      - must match `^[A-Z0-9 ]{5,8}$`
+    country: string [default "GB"]
+      - must be one of "GB" or "IE"
+  billingAddress: Address [tightened]
+    line1*: string
+      - allows at most 70 characters
+    line2: string [forbidden]
+    town*: string
+    postcode*: Postcode
+      - must match `^[A-Z0-9 ]{5,8}$`
+    country: string [default "GB"]
+      - must be one of "GB" or "IE"
+  giftMessage: string
+    - allows at most 140 characters
+  giftWrap: boolean [default false]
+
+## updateOrderStatus request
+used by: PUT /orders/{id}/status [application/json]
+stats: 2 fields, 0 fragments, 3 rules
+(root): object
+  - When `status` is "Rejected": `reason` is required. Otherwise: `reason` isn't allowed
+  status*: string
+    - must be one of "Accepted" or "Rejected"
+  reason: string
+    - allows at most 200 characters
+
+# Response schemas
+
+## Order
+used by: POST /orders 201 [application/json], GET /orders/{id} 200 [application/json]
+stats: 39 fields, 9 fragments, 28 rules
+(root): Order
+  - When `giftMessage` is present: `giftWrap` is required
+  customer*: Customer [from NewOrder]
+    - Needs exactly one of `email` or `phone`
+  lines*: array of OrderLine [from NewOrder]
+    - needs at least 1 item
+    []: OrderLine
+  payment*: Payment [from NewOrder]
+    - When `method` is "card": it's a `Card`
+    - When `method` is "bank-transfer": it's a `BankTransfer`
+  deliveryAddress: Address [tightened, from NewOrder]
+    line1*: string
+      - allows at most 70 characters
+    line2: string
+    town: string
+    postcode*: Postcode
+      - must match `^[A-Z0-9 ]{5,8}$`
+    country: string [default "GB"]
+      - must be one of "GB" or "IE"
+  billingAddress: Address [tightened, from NewOrder]
+    line1*: string
+      - allows at most 70 characters
+    line2: string [forbidden]
+    town*: string
+    postcode*: Postcode
+      - must match `^[A-Z0-9 ]{5,8}$`
+    country: string [default "GB"]
+      - must be one of "GB" or "IE"
+  giftMessage: string [from NewOrder]
+    - allows at most 140 characters
+  giftWrap: boolean [from NewOrder, default false]
+  id*: string [read only]
+    - must be a UUID
+  status*: string
+    - must be one of "Pending", "Accepted" or "Rejected"
+
+## createOrder 400 response
+used by: POST /orders 400 [application/problem+json]
+stats: 2 fields, 0 fragments, 0 rules
+(root): object
+  title*: string
+  detail: string
+
+## listCategories 200 response
+used by: GET /categories 200 [application/json]
+stats: 2 fields, 1 fragments, 0 rules
+(root): array of Category
+  []: Category
+
+# Shared fragments
+
+## NewOrder (spec.yaml#/components/schemas/NewOrder)
+(fragment): NewOrder
+  - When `giftMessage` is present: `giftWrap` is required
+  customer*: Customer
+    - Needs exactly one of `email` or `phone`
+  lines*: array of OrderLine
+    - needs at least 1 item
+    []: OrderLine
+  payment*: Payment
+    - When `method` is "card": it's a `Card`
+    - When `method` is "bank-transfer": it's a `BankTransfer`
+  deliveryAddress: Address [tightened]
+    line1*: string
+      - allows at most 70 characters
+    line2: string
+    town: string
+    postcode*: Postcode
+      - must match `^[A-Z0-9 ]{5,8}$`
+    country: string [default "GB"]
+      - must be one of "GB" or "IE"
+  billingAddress: Address [tightened]
+    line1*: string
+      - allows at most 70 characters
+    line2: string [forbidden]
+    town*: string
+    postcode*: Postcode
+      - must match `^[A-Z0-9 ]{5,8}$`
+    country: string [default "GB"]
+      - must be one of "GB" or "IE"
+  giftMessage: string
+    - allows at most 140 characters
+  giftWrap: boolean [default false]
+
+## Customer (spec.yaml#/components/schemas/Customer)
+(fragment): Customer
+  - Needs exactly one of `email` or `phone`
+  name*: string
+    - must have between 1 and 70 characters
+  email: string
+    - must be an email address
+  phone: string
+  address: Address
+
+## Address (address.yaml#)
+(fragment): Address
+  line1*: string
+    - allows at most 70 characters
+  line2: string
+  town: string
+  postcode: Postcode
+    - must match `^[A-Z0-9 ]{5,8}$`
+  country: string [default "GB"]
+    - must be one of "GB" or "IE"
+
+## Postcode (address.yaml#/$defs/Postcode)
+(fragment): Postcode
+  - must match `^[A-Z0-9 ]{5,8}$`
+
+## OrderLine (spec.yaml#/components/schemas/OrderLine)
+(fragment): OrderLine
+  sku*: string
+    - must match `^[A-Z]{3}-\d+$`
+  quantity*: integer
+    - must be between 1 and 99
+  unitPrice: Money
+
+## Money (spec.yaml#/components/schemas/Money)
+(fragment): Money
+  amount*: number
+    - must be more than 0
+  currency*: string
+    - must be one of "GBP" or "EUR"
+
+## Payment (spec.yaml#/components/schemas/Payment)
+(fragment): Payment
+  - When `method` is "card": it's a `Card`
+  - When `method` is "bank-transfer": it's a `BankTransfer`
+  (Card = "card"): Card
+  (BankTransfer = "bank-transfer"): BankTransfer
+
+## Card (spec.yaml#/components/schemas/Card)
+(fragment): Card
+  method*: string
+    - must be "card"
+  cardNumber*: string
+    - must match `^\d{16}$`
+  expiry*: string
+    - must match `^\d{2}/\d{2}$`
+
+## BankTransfer (spec.yaml#/components/schemas/BankTransfer)
+(fragment): BankTransfer
+  method*: string
+    - must be "bank-transfer"
+  sortCode*: string
+  accountNumber*: string
+    - must have exactly 8 characters
+
+## Order (spec.yaml#/components/schemas/Order)
+(fragment): Order
+  - When `giftMessage` is present: `giftWrap` is required
+  customer*: Customer [from NewOrder]
+    - Needs exactly one of `email` or `phone`
+  lines*: array of OrderLine [from NewOrder]
+    - needs at least 1 item
+    []: OrderLine
+  payment*: Payment [from NewOrder]
+    - When `method` is "card": it's a `Card`
+    - When `method` is "bank-transfer": it's a `BankTransfer`
+  deliveryAddress: Address [tightened, from NewOrder]
+    line1*: string
+      - allows at most 70 characters
+    line2: string
+    town: string
+    postcode*: Postcode
+      - must match `^[A-Z0-9 ]{5,8}$`
+    country: string [default "GB"]
+      - must be one of "GB" or "IE"
+  billingAddress: Address [tightened, from NewOrder]
+    line1*: string
+      - allows at most 70 characters
+    line2: string [forbidden]
+    town*: string
+    postcode*: Postcode
+      - must match `^[A-Z0-9 ]{5,8}$`
+    country: string [default "GB"]
+      - must be one of "GB" or "IE"
+  giftMessage: string [from NewOrder]
+    - allows at most 140 characters
+  giftWrap: boolean [from NewOrder, default false]
+  id*: string [read only]
+    - must be a UUID
+  status*: string
+    - must be one of "Pending", "Accepted" or "Rejected"
+
+## Category (spec.yaml#/components/schemas/Category)
+(fragment): Category
+  name*: string
+  subcategories: array of Category
+    []: Category [recursive]
