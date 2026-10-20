@@ -50,6 +50,16 @@ import Testing
     #expect(try node(schema).rules.map(\.text) == (rule.map { [$0] } ?? []))
   }
 
+  @Test(arguments: [
+    "{type: string, minimum: 5}",
+    "{type: integer, maxLength: 3}",
+    "{type: boolean, minItems: 1}",
+    "{allOf: [{type: string}, {multipleOf: 2}]}",
+  ])
+  func constraintsForOtherTypesArentShown(schema: String) throws {
+    #expect(try node(schema).rules.isEmpty)
+  }
+
   @Test func stricterBoundWins() throws {
     let schema = "{allOf: [{type: string, maxLength: 70}, {maxLength: 10, minLength: 0}]}"
 
@@ -71,6 +81,11 @@ import Testing
     ("{const: null}", "null"),
     ("{type: [string, 'null'], enum: [a]}", "string"),
     ("{type: [string, 'null'], enum: [a, null]}", "string or null"),
+    ("{type: [string, 'null'], anyOf: [{type: string}]}", "any of string"),
+    (
+      "{type: [string, 'null'], anyOf: [{type: string}, {maxLength: 2}]}",
+      "any of string or string or null"
+    ),
     ("{type: array, items: {type: integer}}", "array of integer"),
     ("{type: object}", "object"),
     ("{type: string, properties: {a: {type: integer}}}", "string"),
@@ -181,6 +196,24 @@ import Testing
 
     #expect(schema.object?.additionalFields == .allowed)
     #expect(schema.rules.isEmpty)
+  }
+
+  @Test func unevaluatedPropertiesInAMemberOnlySeesThatMember() throws {
+    let schema = try node(
+      "{type: object, allOf: [{properties: {a: {type: string}}}, {unevaluatedProperties: false}]}")
+
+    #expect(schema.object?[field: "a"]?.isForbidden == true)
+    #expect(schema.object?.additionalFields == .forbidden)
+  }
+
+  @Test func unevaluatedPropertiesBesideARefSeesItsFields() throws {
+    let nodes = try components(
+      """
+      S: {$ref: '#/components/schemas/Base', unevaluatedProperties: false}
+      Base: {type: object, properties: {a: {type: string}}}
+      """)
+
+    #expect(try nodes("S").object?[field: "a"]?.isForbidden == false)
   }
 
   @Test func impossibleFieldIsForbidden() throws {
@@ -469,6 +502,46 @@ import Testing
       """)
 
     #expect(schema.rules.map(\.text) == ["When the `if` schema matches: `approval` is required"])
+  }
+
+  @Test func branchWithNestedRequirementsSaysThem() throws {
+    let schema = try node(
+      """
+      type: object
+      if: {required: [ship]}
+      then: {properties: {address: {required: [zip], properties: {zip: {maxLength: 8}}}}}
+      """)
+
+    #expect(
+      schema.rules.map(\.text) == [
+        "When `ship` is present: `address.zip` is required; `address.zip` allows at most 8 characters"
+      ])
+  }
+
+  @Test func branchThatCantBeWordedSaysItApplies() throws {
+    let schema = try node(
+      """
+      type: object
+      if: {required: [ship]}
+      then: {properties: {address: {oneOf: [{required: [zip]}, {required: [box]}]}}}
+      """)
+
+    #expect(schema.rules.map(\.text) == ["When `ship` is present: the `then` schema applies"])
+  }
+
+  @Test func branchWithADependencySaysIt() throws {
+    let schema = try node(
+      "{type: object, if: {required: [a]}, then: {dependentRequired: {b: [c]}}}")
+
+    #expect(
+      schema.rules.map(\.text) == ["When `a` is present: when `b` is present, `c` is required"])
+  }
+
+  @Test func conditionWithADependencyFallsBack() throws {
+    let schema = try node(
+      "{type: object, if: {required: [a], dependentRequired: {b: [c]}}, then: {required: [d]}}")
+
+    #expect(schema.rules.map(\.text) == ["When the `if` schema matches: `d` is required"])
   }
 
   @Test func conditionFallsBackToItsDescription() throws {

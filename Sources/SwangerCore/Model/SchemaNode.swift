@@ -110,7 +110,9 @@ public struct SchemaNode: Equatable, Sendable {
     // Said once: a null type, or a variant that already allows null, says it.
     let saysNull =
       scalar?.types.contains("null") == true
-      || choice?.variants.contains { $0.node.allowsNull } == true
+      || choice?.variants.contains {
+        $0.node.allowsNull || $0.node.scalar?.types.contains("null") == true
+      } == true
     return allowsNull && !saysNull ? "\(base) or null" : base
   }
 }
