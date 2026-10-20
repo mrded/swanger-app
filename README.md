@@ -19,6 +19,15 @@ show.
 > Searching for "swanger"? Search engines tend to correct it to "swagger". Look for "Swanger OpenAPI schema
 > viewer for macOS".
 
+## What the diagram is (and isn't)
+
+The diagram and its plain-English rules show what the spec **says**. Whether a payload is valid is decided
+only by Try it's JSON Schema validator. For rare keyword combinations (contradictions,
+`unevaluatedProperties`, `not: {type: …}`, …) the diagram can be less strict than the validator, but never
+stricter. The exact boundaries are in the plan's
+[Model boundaries](docs/plans/20261020-swanger-v1.md#model-boundaries). Please read them before reporting a
+mismatch or extending the model.
+
 ## Status
 
 Early development. See [the v1 plan](docs/plans/20261020-swanger-v1.md) for what's coming.

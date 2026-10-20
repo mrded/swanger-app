@@ -82,24 +82,12 @@ import Testing
     ("{type: [string, 'null'], enum: [a]}", "string"),
     ("{type: [string, 'null'], enum: [a, null]}", "string or null"),
     ("{type: [string, 'null'], anyOf: [{type: string}]}", "any of string"),
-    (
-      "{type: [string, 'null'], anyOf: [{type: string}, {maxLength: 2}]}",
-      "any of string or string or null"
-    ),
     ("{type: array, items: {type: integer}}", "array of integer"),
     ("{type: object}", "object"),
     ("{type: string, properties: {a: {type: integer}}}", "string"),
     ("{type: array, items: {type: string}, properties: {a: {}}}", "array of string"),
     ("{type: 'null', properties: {a: {type: integer}}}", "null"),
     ("{type: 'null', items: {type: string}}", "null"),
-    ("{type: string, oneOf: [{type: string}, {type: integer}]}", "one of string"),
-    ("{type: string, oneOf: [{type: integer}, {type: boolean}]}", "nothing"),
-    ("{type: 'null', anyOf: [{type: [string, 'null']}]}", "any of null"),
-    (
-      "{type: [string, 'null'], anyOf: [{type: [object, 'null']}, {type: string}]}",
-      "any of null or string"
-    ),
-    ("{type: number, anyOf: [{maxLength: 2}, {type: integer}]}", "any of number or integer"),
     ("{properties: {a: {type: string}}}", "object"),
     ("{oneOf: [{type: string}, {type: integer}]}", "one of string or integer"),
     ("{allOf: [{type: number}, {type: integer}]}", "integer"),
@@ -107,16 +95,7 @@ import Testing
     ("{allOf: [{type: string}, {type: integer}]}", "nothing"),
     ("{allOf: [{type: [string, 'null']}, {type: [integer, 'null']}]}", "null"),
     ("{allOf: [{enum: [a]}, {enum: [b]}]}", "nothing"),
-    ("{allOf: [{type: integer}, {enum: [y]}]}", "nothing"),
-    ("{allOf: [{type: string}, {not: {type: string}}]}", "nothing"),
-    ("{type: [string, 'null'], not: {type: 'null'}}", "string"),
-    ("{type: object, required: [b], properties: {b: false}}", "nothing"),
     ("{required: [b], properties: {b: false}}", "object"),
-    ("{type: [object, 'null'], required: [b], properties: {b: false}}", "null"),
-    (
-      "{type: object, required: [a], properties: {a: {allOf: [{type: string}, {type: integer}]}}}",
-      "nothing"
-    ),
     ("{not: {}}", "nothing"),
     ("{not: true}", "nothing"),
     ("{not: {description: Anything.}}", "nothing"),
@@ -124,6 +103,19 @@ import Testing
     ("{type: array, items: {not: {}}}", "array of nothing"),
   ])
   func typeDescriptions(schema: String, type: String) throws {
+    #expect(try node(schema).shapeDescription == type)
+  }
+
+  /// The model shows what the keywords say and doesn't prove that nothing can match them: that's
+  /// for the validator (see "Model boundaries" in the plan).
+  @Test(arguments: [
+    ("{type: string, oneOf: [{type: string}, {type: integer}]}", "one of string or integer"),
+    ("{type: string, oneOf: [{type: integer}, {type: boolean}]}", "one of integer or boolean"),
+    ("{allOf: [{type: integer}, {enum: [y]}]}", "integer"),
+    ("{type: object, required: [b], properties: {b: false}}", "object"),
+    ("{type: [string, 'null'], not: {type: 'null'}}", "string or null"),
+  ])
+  func contradictionsAreShownAsWritten(schema: String, type: String) throws {
     #expect(try node(schema).shapeDescription == type)
   }
 
@@ -167,43 +159,18 @@ import Testing
     #expect(object.fields.map(\.isForbidden) == [false, true, false])
   }
 
-  @Test func unevaluatedPropertiesSeesTheVariantsFields() throws {
-    let schema = try node(
-      """
-      type: object
-      properties: {id: {type: string}}
-      anyOf: [{properties: {a: {type: string}}}, {properties: {b: {type: string}}}]
-      unevaluatedProperties: false
-      """)
+  @Test(arguments: [
+    ("{type: object, unevaluatedProperties: false}", "allows no unevaluated fields"),
+    (
+      "{type: object, unevaluatedProperties: {type: string}}",
+      "unevaluated fields must match `unevaluatedProperties`"
+    ),
+  ])
+  func unevaluatedPropertiesIsARuleOnly(schema: String, rule: String) throws {
+    let schema = try node(schema)
 
     #expect(schema.object?.additionalFields == .allowed)
-    #expect(
-      schema.rules.map(\.text).contains("allows no fields beyond these and the matching variant's"))
-  }
-
-  @Test func unevaluatedPropertiesWithoutVariantsClosesTheObject() throws {
-    let schema = try node(
-      "{allOf: [{type: object, properties: {a: {}}}, {properties: {b: {}}}], unevaluatedProperties: false}"
-    )
-
-    #expect(schema.object?.additionalFields == .forbidden)
-    #expect(schema.object?.fields.map(\.isForbidden) == [false, false])
-  }
-
-  @Test func additionalPropertiesTrueLeavesNothingUnevaluated() throws {
-    let schema = try node(
-      "{type: object, additionalProperties: true, unevaluatedProperties: false}")
-
-    #expect(schema.object?.additionalFields == .allowed)
-    #expect(schema.rules.isEmpty)
-  }
-
-  @Test func unevaluatedPropertiesInAMemberOnlySeesThatMember() throws {
-    let schema = try node(
-      "{type: object, allOf: [{properties: {a: {type: string}}}, {unevaluatedProperties: false}]}")
-
-    #expect(schema.object?[field: "a"]?.isForbidden == true)
-    #expect(schema.object?.additionalFields == .forbidden)
+    #expect(schema.rules.map(\.text) == [rule])
   }
 
   @Test func unevaluatedPropertiesBesideARefSeesItsFields() throws {
@@ -254,7 +221,7 @@ import Testing
     #expect(try nodes("S").kind == .never)
   }
 
-  @Test func itemsApplyToTheTuplePositionsTheyCover() throws {
+  @Test func tuplePositionsShowOnlyTheirOwnPrefixItems() throws {
     let schema = try node(
       """
       allOf:
@@ -263,15 +230,8 @@ import Testing
       """)
     let array = try #require(schema.array)
 
-    // The second member's `items` covers both its own trailing positions.
-    #expect(array.prefixItems.map(\.shapeDescription) == ["string", "integer"])
+    #expect(array.prefixItems.map(\.shapeDescription) == ["string", "any"])
     #expect(array.items?.shapeDescription == "integer")
-  }
-
-  @Test func itemsCoveringAStringPositionAllowNothingThere() throws {
-    let schema = try node("{allOf: [{prefixItems: [{type: string}]}, {items: {type: integer}}]}")
-
-    #expect(schema.array?.prefixItems.map(\.shapeDescription) == ["nothing"])
   }
 
   @Test func tuplePositionsMergeAcrossAllOf() throws {
@@ -544,7 +504,7 @@ import Testing
     #expect(schema.rules.map(\.text) == ["When the `if` schema matches: `d` is required"])
   }
 
-  @Test func optionalParentsNestedRequirementIsKept() throws {
+  @Test func optionalParentsNestedRequirementFallsBack() throws {
     let schema = try node(
       """
       type: object
@@ -552,10 +512,7 @@ import Testing
       then: {required: [x]}
       """)
 
-    #expect(
-      schema.rules.map(\.text) == [
-        "When `flag` is true and `parent` is missing or `parent.child` is 1: `x` is required"
-      ])
+    #expect(schema.rules.map(\.text) == ["When the `if` schema matches: `x` is required"])
   }
 
   @Test func conditionFallsBackToItsDescription() throws {
