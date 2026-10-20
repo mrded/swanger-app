@@ -1,0 +1,20 @@
+type: object
+required: [line1]
+properties:
+  line1:
+    type: string
+    maxLength: 70
+  line2:
+    type: string
+  town:
+    type: string
+  postcode:
+    $ref: '#/$defs/Postcode'
+  country:
+    type: string
+    enum: [GB, IE]
+    default: GB
+$defs:
+  Postcode:
+    type: string
+    pattern: '^[A-Z0-9 ]{5,8}$'

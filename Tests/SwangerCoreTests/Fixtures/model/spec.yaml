@@ -1,0 +1,224 @@
+openapi: 3.1.0
+info:
+  title: Shop
+  version: 2.0.0
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewOrder'
+            examples:
+              card:
+                summary: Paid by card
+                value:
+                  customer: { name: Ada, email: ada@example.com }
+                  lines: [{ sku: ABC-1, quantity: 2 }]
+                  payment: { method: card, cardNumber: '4111111111111111', expiry: '12/30' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Invalid order
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                required: [title]
+                properties:
+                  title:
+                    type: string
+                  detail:
+                    type: string
+  /orders/{id}:
+    get:
+      responses:
+        '200':
+          description: The order
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+  /orders/{id}/status:
+    put:
+      operationId: updateOrderStatus
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [Accepted, Rejected]
+                reason:
+                  type: string
+                  maxLength: 200
+              if:
+                properties:
+                  status:
+                    const: Rejected
+                required: [status]
+              then:
+                required: [reason]
+              else:
+                properties:
+                  reason: false
+      responses:
+        '204':
+          description: Updated
+  /categories:
+    get:
+      operationId: listCategories
+      responses:
+        '200':
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+components:
+  schemas:
+    NewOrder:
+      type: object
+      description: An order as the customer places it.
+      required: [customer, lines, payment]
+      properties:
+        customer:
+          $ref: '#/components/schemas/Customer'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderLine'
+        payment:
+          $ref: '#/components/schemas/Payment'
+        deliveryAddress:
+          description: Where to deliver. Defaults to the customer's address.
+          allOf:
+            - $ref: '#/components/schemas/Address'
+            - required: [postcode]
+        billingAddress:
+          $ref: '#/components/schemas/Address'
+          required: [town, postcode]
+          properties:
+            line2: false
+        giftMessage:
+          type: string
+          maxLength: 140
+        giftWrap:
+          type: boolean
+          default: false
+      dependentRequired:
+        giftMessage: [giftWrap]
+      examples:
+        - customer: { name: Ada, phone: '+44 20 7946 0000' }
+          lines: [{ sku: ABC-1, quantity: 1 }]
+          payment: { method: bank-transfer, sortCode: '12-34-56', accountNumber: '12345678' }
+    Order:
+      allOf:
+        - $ref: '#/components/schemas/NewOrder'
+        - type: object
+          required: [id, status]
+          properties:
+            id:
+              type: string
+              format: uuid
+              readOnly: true
+            status:
+              type: string
+              enum: [Pending, Accepted, Rejected]
+    Customer:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 70
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        address:
+          $ref: '#/components/schemas/Address'
+      oneOf:
+        - required: [email]
+        - required: [phone]
+    Address:
+      $ref: './common/address.yaml'
+    OrderLine:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku:
+          type: string
+          pattern: '^[A-Z]{3}-\d+$'
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 99
+        unitPrice:
+          $ref: '#/components/schemas/Money'
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          exclusiveMinimum: 0
+        currency:
+          type: string
+          enum: [GBP, EUR]
+    Payment:
+      oneOf:
+        - $ref: '#/components/schemas/Card'
+        - $ref: '#/components/schemas/BankTransfer'
+    Card:
+      type: object
+      required: [method, cardNumber, expiry]
+      properties:
+        method:
+          const: card
+        cardNumber:
+          type: string
+          pattern: '^\d{16}$'
+        expiry:
+          type: string
+          pattern: '^\d{2}/\d{2}$'
+    BankTransfer:
+      type: object
+      required: [method, sortCode, accountNumber]
+      properties:
+        method:
+          const: bank-transfer
+        sortCode:
+          type: string
+        accountNumber:
+          type: string
+          minLength: 8
+          maxLength: 8
+    Category:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        subcategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
