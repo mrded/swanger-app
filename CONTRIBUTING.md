@@ -19,7 +19,7 @@ stay a thin SwiftUI layer on top.
 ## Requirements
 
 - macOS 15 Sequoia or later
-- Xcode 27 or later (Swift 6 language mode)
+- Xcode 27.1 (Swift 6 language mode), the version CI uses
 
 ## Building and testing
 
@@ -41,8 +41,72 @@ Before opening a pull request:
 
 ```sh
 xcrun swift-format format --in-place --recursive Sources Tests App/Swanger
-xcrun swift-format lint --strict --recursive Sources Tests App/Swanger
+xcrun swift-format lint --strict --recursive Package.swift Sources Tests App/Swanger
 ```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and every push to `main`:
+
+- **test**: `swift-format lint --strict`, then `swift test --parallel`.
+- **build**: builds the app scheme for testing and runs its tests (once the UI smoke tests exist), then makes
+  an ad hoc signed Release build and attaches it to the run as `Swanger-<short sha>.zip` for 14 days.
+
+When a job fails, its test results (`.xcresult` bundles, or xUnit XML from `swift test`) are attached too. A
+new push to a pull request cancels the run for the previous push.
+
+CI runs on GitHub's `xcode-27` macOS runner image (a public preview) with Xcode 27.1 selected through
+`xcode-select`. When moving to a new Xcode, change `XCODE_APP` in both workflows and the version under
+**Requirements** above together. The image's
+[readme](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md) lists the
+Xcode versions it has.
+
+Workflows are checked with [actionlint](https://github.com/rhysd/actionlint) (configured in
+`.github/actionlint.yaml`).
+
+`main` is protected: pull requests need the **test** and **build** checks to pass before they can be merged.
+
+## Releasing
+
+`.github/workflows/release.yml` runs when a tag starting with `v` is pushed. It runs the CI jobs, archives a
+Release build with the version taken from the tag, makes `Swanger-<version>.zip` and `Swanger-<version>.dmg`
+with a `SHA256SUMS.txt`, and creates a GitHub Release with generated notes. To cut a release:
+
+```sh
+git switch main && git pull
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+A tag with a suffix, such as `v0.2.0-beta.1`, is always published as a pre-release.
+
+### Secrets
+
+Set these under **Settings › Secrets and variables › Actions**. Each group is optional: when one is missing,
+its steps are skipped and the release is published as a pre-release.
+
+| Secret | What it is |
+|---|---|
+| `DEVELOPER_ID_P12` | The **Developer ID Application** certificate and private key, exported from Keychain Access as a `.p12` and base64 encoded: `base64 -i DeveloperID.p12 \| pbcopy` |
+| `DEVELOPER_ID_P12_PASSWORD` | The password chosen when exporting the `.p12` |
+| `ASC_KEY_ID` | Key ID of an App Store Connect API key (**Users and Access › Integrations › Team Keys**), with the Developer role |
+| `ASC_ISSUER_ID` | The issuer ID shown above that list of keys |
+| `ASC_KEY_P8` | The contents of the downloaded `AuthKey_<key id>.p8` file |
+| `TAP_TOKEN` | A fine-grained personal access token for `mrded/homebrew-tap` only, with **Contents: read and write** |
+
+What gets published depends on which are set:
+
+| Secrets set | Result |
+|---|---|
+| None | Ad hoc signed build, published as a pre-release |
+| `DEVELOPER_ID_*` | Signed with Developer ID but not notarised; pre-release |
+| `DEVELOPER_ID_*` and `ASC_*` | Signed, notarised and stapled; a full release |
+| All of them | As above, and `Casks/swanger.rb` in the tap is updated to the new version and checksum |
+
+The cask is only updated for full releases, so `brew install --cask mrded/tap/swanger` always installs a
+notarised build.
+
+The certificate is imported into a temporary keychain that is deleted when the job ends.
 
 ## Dependencies
 

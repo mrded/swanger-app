@@ -1,0 +1,263 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Creating the GitHub Release needs write access; nothing else in the repo does.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  XCODE_APP: /Applications/Xcode_27.1.app
+  TAP_REPOSITORY: mrded/homebrew-tap
+
+jobs:
+  ci:
+    name: ci
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  release:
+    name: release
+    needs: ci
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      PROJECT: App/Swanger.xcodeproj
+      SCHEME: Swanger
+      KEYCHAIN: ${{ github.workspace }}/build/signing.keychain-db
+      # Secrets can't be tested in `if:` directly, so record which ones are set.
+      HAS_DEVELOPER_ID: ${{ secrets.DEVELOPER_ID_P12 != '' && secrets.DEVELOPER_ID_P12_PASSWORD != '' }}
+      HAS_NOTARY: ${{ secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.ASC_KEY_P8 != '' }}
+      HAS_TAP_TOKEN: ${{ secrets.TAP_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select --switch "$XCODE_APP"
+          xcodebuild -version
+
+      - name: Work out the version
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          signed=false
+          notarised=false
+          if [[ "$HAS_DEVELOPER_ID" == true ]]; then signed=true; fi
+          if [[ "$signed" == true && "$HAS_NOTARY" == true ]]; then notarised=true; fi
+          # Only a notarised build of a plain version (v1.2.3, not v1.2.3-beta.1) is a full release.
+          prerelease=true
+          if [[ "$notarised" == true && "$version" != *-* ]]; then prerelease=false; fi
+          {
+            echo "version=$version"
+            echo "signed=$signed"
+            echo "notarised=$notarised"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "Swanger $version: signed=$signed notarised=$notarised prerelease=$prerelease"
+          if [[ "$signed" != true ]]; then
+            echo "::warning::DEVELOPER_ID_P12 secrets are missing; publishing an ad hoc signed pre-release."
+          elif [[ "$notarised" != true ]]; then
+            echo "::warning::ASC_* secrets are missing; publishing a signed but not notarised pre-release."
+          fi
+
+      - name: Import the Developer ID certificate
+        id: identity
+        if: steps.version.outputs.signed == 'true'
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          mkdir -p build
+          keychain_password="$(uuidgen)"
+          echo "$DEVELOPER_ID_P12" | base64 --decode > build/developer-id.p12
+          security create-keychain -p "$keychain_password" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$keychain_password" "$KEYCHAIN"
+          security import build/developer-id.p12 -k "$KEYCHAIN" -P "$DEVELOPER_ID_P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$KEYCHAIN"
+          keychains=()
+          while read -r line; do
+            keychains+=("$(tr -d '"' <<< "$line")")
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "$KEYCHAIN" "${keychains[@]}"
+          rm build/developer-id.p12
+
+          identity="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -n 1)"
+          if [[ -z "$identity" ]]; then
+            echo "::error::No Developer ID Application identity in DEVELOPER_ID_P12."
+            exit 1
+          fi
+          team="$(sed -n 's/.*(\([A-Z0-9]*\))$/\1/p' <<< "$identity")"
+          echo "name=$identity" >> "$GITHUB_OUTPUT"
+          echo "team=$team" >> "$GITHUB_OUTPUT"
+
+      - name: Archive
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IDENTITY: ${{ steps.identity.outputs.name }}
+          TEAM: ${{ steps.identity.outputs.team }}
+        run: |
+          if [[ -n "$IDENTITY" ]]; then
+            signing=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=$IDENTITY" "DEVELOPMENT_TEAM=$TEAM"
+              "OTHER_CODE_SIGN_FLAGS=--keychain $KEYCHAIN --timestamp")
+          else
+            signing=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=)
+          fi
+          xcodebuild archive \
+            -project "$PROJECT" -scheme "$SCHEME" -configuration Release -destination 'generic/platform=macOS' \
+            -archivePath build/Swanger.xcarchive -derivedDataPath build/DerivedData \
+            -resultBundlePath build/results/archive.xcresult \
+            "MARKETING_VERSION=$VERSION" "CURRENT_PROJECT_VERSION=$GITHUB_RUN_NUMBER" \
+            "${signing[@]}"
+          mkdir -p build/dist
+          ditto build/Swanger.xcarchive/Products/Applications/Swanger.app build/dist/Swanger.app
+          codesign --verify --deep --strict --verbose=2 build/dist/Swanger.app
+          codesign -dv build/dist/Swanger.app
+
+      - name: Build the disk image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IDENTITY: ${{ steps.identity.outputs.name }}
+        run: |
+          mkdir -p build/dmg
+          ditto build/dist/Swanger.app build/dmg/Swanger.app
+          ln -s /Applications build/dmg/Applications
+          diskutil image create from --format ULFO --volumeName Swanger build/dmg \
+            "build/dist/Swanger-$VERSION.dmg"
+          if [[ -n "$IDENTITY" ]]; then
+            codesign --sign "$IDENTITY" --keychain "$KEYCHAIN" --timestamp "build/dist/Swanger-$VERSION.dmg"
+          fi
+
+      - name: Notarise and staple
+        if: steps.version.outputs.notarised == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s' "$ASC_KEY_P8" > "$key"
+          # Notarising the disk image also notarises the app inside it, so both can be stapled.
+          xcrun notarytool submit "build/dist/Swanger-$VERSION.dmg" \
+            --key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
+            --wait --timeout 30m --output-format json | tee build/notarytool.json
+          status="$(plutil -extract status raw -o - build/notarytool.json)"
+          if [[ "$status" != Accepted ]]; then
+            id="$(plutil -extract id raw -o - build/notarytool.json)"
+            xcrun notarytool log "$id" --key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" || true
+            echo "::error::Notarisation finished with status $status."
+            exit 1
+          fi
+          rm "$key"
+          xcrun stapler staple "build/dist/Swanger-$VERSION.dmg"
+          xcrun stapler staple build/dist/Swanger.app
+          spctl --assess --type execute --verbose build/dist/Swanger.app
+
+      - name: Zip and checksum
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd build/dist
+          ditto -c -k --sequesterRsrc --keepParent Swanger.app "Swanger-$VERSION.zip"
+          shasum -a 256 "Swanger-$VERSION.zip" "Swanger-$VERSION.dmg" | tee SHA256SUMS.txt
+          echo "zip_sha256=$(shasum -a 256 "Swanger-$VERSION.zip" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          SIGNED: ${{ steps.version.outputs.signed }}
+          NOTARISED: ${{ steps.version.outputs.notarised }}
+        run: |
+          flags=(--verify-tag --generate-notes --title "Swanger $VERSION")
+          if [[ "$PRERELEASE" == true ]]; then
+            flags+=(--prerelease)
+          fi
+          # --notes is prepended to the generated notes.
+          if [[ "$NOTARISED" != true ]]; then
+            if [[ "$SIGNED" == true ]]; then
+              how="signed but not notarised"
+            else
+              how="ad hoc signed and not notarised"
+            fi
+            flags+=(--notes "This build is $how. To open it, right-click Swanger.app and choose Open, or run \`xattr -dr com.apple.quarantine Swanger.app\`.")
+          fi
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
+            "build/dist/Swanger-$VERSION.zip" \
+            "build/dist/Swanger-$VERSION.dmg" \
+            build/dist/SHA256SUMS.txt
+
+      - name: Check out the Homebrew tap
+        if: steps.version.outputs.prerelease == 'false' && env.HAS_TAP_TOKEN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.TAP_REPOSITORY }}
+          token: ${{ secrets.TAP_TOKEN }}
+          path: build/tap
+
+      - name: Update the Homebrew cask
+        if: steps.version.outputs.prerelease == 'false' && env.HAS_TAP_TOKEN == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA256: ${{ steps.package.outputs.zip_sha256 }}
+        run: |
+          cd build/tap
+          mkdir -p Casks
+          cat > Casks/swanger.rb <<EOF
+          cask "swanger" do
+            version "$VERSION"
+            sha256 "$SHA256"
+
+            url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/Swanger-#{version}.zip"
+            name "Swanger"
+            desc "OpenAPI schema viewer"
+            homepage "https://github.com/$GITHUB_REPOSITORY"
+
+            depends_on macos: ">= :sequoia"
+
+            app "Swanger.app"
+
+            zap trash: [
+              "~/Library/Preferences/io.github.mrded.swanger.plist",
+              "~/Library/Saved Application State/io.github.mrded.swanger.savedState",
+            ]
+          end
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/swanger.rb
+          if git diff --cached --quiet; then
+            echo "Cask already at $VERSION."
+          else
+            git commit -m "swanger $VERSION"
+            git push
+          fi
+
+      - name: Upload result bundles
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xcresult-release-${{ github.run_id }}
+          path: build/results
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [[ -f "$KEYCHAIN" ]]; then
+            security delete-keychain "$KEYCHAIN"
+          fi

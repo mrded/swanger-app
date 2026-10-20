@@ -1,5 +1,7 @@
 # Swanger
 
+[![CI](https://github.com/mrded/swanger-app/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mrded/swanger-app/actions/workflows/ci.yml)
+
 **OpenAPI schema viewer for macOS.**
 
 Swanger opens an OpenAPI 3.0 or 3.1 file (JSON or YAML) and shows the resources it defines:
@@ -20,6 +22,21 @@ show.
 ## Status
 
 Early development. See [the v1 plan](docs/plans/20261020-swanger-v1.md) for what's coming.
+
+## Trying a build from a pull request
+
+Every CI run attaches the app it built. Open the run from the pull request's **Checks** tab (or the
+[Actions](https://github.com/mrded/swanger-app/actions/workflows/ci.yml) page), download
+`Swanger-<commit>.zip` under **Artifacts**, and unzip it.
+
+These builds are signed ad hoc, not with a Developer ID, so macOS will refuse to open them at first. Either
+right-click `Swanger.app` and choose **Open**, then **Open** again, or remove the quarantine flag:
+
+```sh
+xattr -dr com.apple.quarantine Swanger.app
+```
+
+Artifacts are kept for 14 days.
 
 ## Building
 
