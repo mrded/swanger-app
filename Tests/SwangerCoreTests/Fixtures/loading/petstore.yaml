@@ -1,0 +1,62 @@
+# The same spec as petstore.json, written the way people write YAML.
+openapi: 3.1.0
+info:
+  title: Petstore
+  version: "1.0.0"
+paths:
+  /pets:
+    post:
+      operationId: createPet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pet'
+      responses:
+        201:
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        '400':
+          description: Invalid pet
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string, maxLength: 70 }
+        kind:
+          type: string
+          enum: [cat, dog, yes, no]
+        id:
+          type: integer
+          minimum: 1
+        weight:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 99.5
+        born:
+          type: string
+          format: date
+          examples:
+            - 2024-01-31
+        vaccinated:
+          type: boolean
+          default: false
+        nickname:
+          type: [string, 'null']
+          default: ~
+        tags:
+          type: array
+          items:
+            type: string
+          minItems: 1
+      example:
+        name: Rex
+        kind: dog
+        weight: 12.25
+        count: 1e3
+        code: "007"

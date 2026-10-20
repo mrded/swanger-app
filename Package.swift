@@ -14,6 +14,7 @@ let package = Package(
   dependencies: [
     .package(url: "https://github.com/jpsim/Yams.git", from: "6.2.2"),
     .package(url: "https://github.com/ajevans99/swift-json-schema.git", from: "0.14.2"),
+    .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
   ],
   targets: [
     .target(
@@ -21,6 +22,8 @@ let package = Package(
       dependencies: [
         .product(name: "Yams", package: "Yams"),
         .product(name: "JSONSchema", package: "swift-json-schema"),
+        .product(name: "OrderedJSON", package: "swift-json-schema"),
+        .product(name: "OrderedCollections", package: "swift-collections"),
       ]
     ),
     .target(
@@ -32,7 +35,8 @@ let package = Package(
     ),
     .testTarget(
       name: "SwangerCoreTests",
-      dependencies: ["SwangerCore"]
+      dependencies: ["SwangerCore"],
+      resources: [.copy("Fixtures")]
     ),
     .testTarget(
       name: "SwangerValidationTests",
