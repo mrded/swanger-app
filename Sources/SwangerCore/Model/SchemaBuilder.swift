@@ -796,7 +796,9 @@ final class SchemaBuilder {
     /// counts but the object's own field list doesn't. An `additionalProperties` schema evaluates
     /// every other field, so `unevaluatedProperties` has nothing left to apply to.
     var hasBranches: Bool { !choices.isEmpty || !conditions.isEmpty }
-    var unevaluatedApplies: Bool { additional.isEmpty }
+    var unevaluatedApplies: Bool { additional.isEmpty && !additionalAllowsAll }
+    /// `additionalProperties: true`, written out.
+    var additionalAllowsAll = false
     /// Other fields are closed off, by `additionalProperties`, or by `unevaluatedProperties` when no
     /// variant or branch can add fields.
     var closesOtherFields: Bool {
@@ -869,6 +871,7 @@ final class SchemaBuilder {
         narrowed.additionalForbidden = additionalForbidden
         narrowed.unevaluatedForbidden = unevaluatedForbidden
         narrowed.unevaluated = unevaluated
+        narrowed.additionalAllowsAll = additionalAllowsAll
         narrowed.scopedAdditional = scopedAdditional
         narrowed.patternProperties = patternProperties
         narrowed.minProperties = minProperties
@@ -971,6 +974,8 @@ final class SchemaBuilder {
           } else if case .object = schema {
             additional.append(part(schema))
           } else {
+            // `true`: any other field is allowed, and counts as evaluated.
+            additionalAllowsAll = true
             break
           }
           scopedAdditional.append(
@@ -1159,15 +1164,27 @@ final class SchemaBuilder {
       }
     }
 
+    /// Simple wording only when one keyword says everything the negated schema does; otherwise
+    /// "mustn't match `not`", which can't mislead.
     private static func negation(_ schema: ResolvedSchema) -> String {
-      guard case .object(let object) = schema else { return "mustn't match `not`" }
+      guard case .object(let object) = schema, object.reference == nil else {
+        return "mustn't match `not`"
+      }
+      let keywords = object.keywords.keys.filter { !SchemaBuilder.isAnnotation($0) }
+      guard keywords.count == 1 else { return "mustn't match `not`" }
       if let fields = object["required"]?.value?.array?.compactMap(\.string), !fields.isEmpty {
-        return "mustn't have \(list(fields.map(Wording.code), "and"))"
+        // `not: {required: [a, b]}` only rules out having all of them.
+        let codes = fields.map(Wording.code)
+        switch codes.count {
+        case 1: return "mustn't have \(codes[0])"
+        case 2: return "mustn't have both \(codes[0]) and \(codes[1])"
+        default: return "mustn't have all of \(list(codes, "and"))"
+        }
       }
       if let values = object["enum"]?.value?.array ?? object["const"]?.value.map({ [$0] }) {
         return "mustn't be \(list(values.map(Wording.literal), "or"))"
       }
-      if Array(object.keywords.keys) == ["type"], let value = object["type"]?.value {
+      if keywords == ["type"], let value = object["type"]?.value {
         let types = value.string.map { [$0] } ?? value.array?.compactMap(\.string) ?? []
         if !types.isEmpty { return "mustn't be \(Wording.types(types))" }
       }

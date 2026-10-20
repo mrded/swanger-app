@@ -41,6 +41,10 @@ import Testing
     ("{type: object, minProperties: 2}", "needs at least 2 fields"),
     ("{type: object, additionalProperties: false}", "allows no other fields"),
     ("{type: string, not: {enum: [x]}}", #"mustn't be "x""#),
+    ("{type: object, not: {required: [a]}}", "mustn't have `a`"),
+    ("{type: object, not: {required: [a, b]}}", "mustn't have both `a` and `b`"),
+    ("{type: object, not: {required: [a], properties: {a: {const: 1}}}}", "mustn't match `not`"),
+    ("{type: string, not: {enum: [x], maxLength: 3}}", "mustn't match `not`"),
   ])
   func constraintWording(schema: String, rule: String?) throws {
     #expect(try node(schema).rules.map(\.text) == (rule.map { [$0] } ?? []))
@@ -167,6 +171,14 @@ import Testing
 
     #expect(schema.object?.additionalFields == .forbidden)
     #expect(schema.object?.fields.map(\.isForbidden) == [false, false])
+  }
+
+  @Test func additionalPropertiesTrueLeavesNothingUnevaluated() throws {
+    let schema = try node(
+      "{type: object, additionalProperties: true, unevaluatedProperties: false}")
+
+    #expect(schema.object?.additionalFields == .allowed)
+    #expect(schema.rules.isEmpty)
   }
 
   @Test func impossibleFieldIsForbidden() throws {
