@@ -110,10 +110,12 @@ The certificate is imported into a temporary keychain that is deleted when the j
 
 ## Dependencies
 
-Swanger keeps dependencies few and MIT-licensed:
+Swanger keeps dependencies few and permissively licensed:
 
 - [Yams](https://github.com/jpsim/Yams) for YAML
 - [swift-json-schema](https://github.com/ajevans99/swift-json-schema) (the `JSONSchema` product) for JSON
   Schema 2020-12 validation and its order-preserving `OrderedJSON` tree
+- [swift-collections](https://github.com/apple/swift-collections) (Apache 2.0, the `OrderedCollections`
+  product) for building `OrderedJSON` objects; swift-json-schema depends on it already
 
 Please open an issue before adding a new one.

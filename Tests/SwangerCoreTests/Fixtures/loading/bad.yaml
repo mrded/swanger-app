@@ -1,0 +1,9 @@
+openapi: 3.0.3
+info:
+  title: Broken
+  version: 1.0.0
+paths:
+  /pets:
+    get:
+      summary: List pets
+     description: This line is indented one space too little.
