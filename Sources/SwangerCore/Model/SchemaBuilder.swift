@@ -794,6 +794,8 @@ final class SchemaBuilder {
     var dependentRequired: [(field: String, requires: [String])] = []
     var nots: [ResolvedSchema] = []
     var contains: [ResolvedSchema] = []
+    var minContains: Int?
+    var maxContains: Int?
     var allowed: [JSONValue]?
     var format: String?
     var patterns: [String] = []
@@ -817,7 +819,8 @@ final class SchemaBuilder {
       "patternProperties", "properties", "propertyNames", "required", "unevaluatedProperties",
     ]
     private static let arrayKeywords: Set<String> = [
-      "contains", "items", "maxItems", "minItems", "prefixItems", "uniqueItems", "unevaluatedItems",
+      "contains", "items", "maxContains", "maxItems", "minContains", "minItems", "prefixItems",
+      "uniqueItems", "unevaluatedItems",
     ]
 
     /// The same facts with nothing required, for a part of a condition that may be missing.
@@ -857,6 +860,8 @@ final class SchemaBuilder {
         narrowed.itemsStart = itemsStart
         narrowed.prefixItems = prefixItems
         narrowed.contains = contains
+        narrowed.minContains = minContains
+        narrowed.maxContains = maxContains
         narrowed.minItems = minItems
         narrowed.maxItems = maxItems
         narrowed.uniqueItems = uniqueItems
@@ -971,6 +976,10 @@ final class SchemaBuilder {
           nots.append(schema)
         case ("contains", .schema(let schema)):
           contains.append(schema)
+        case ("minContains", .value(let value)):
+          minContains = Self.larger(minContains, value.integer)
+        case ("maxContains", .value(let value)):
+          maxContains = Self.smaller(maxContains, value.integer)
         case ("enum", .value(let value)):
           restrict(to: value.array ?? [])
         case ("const", .value(let value)):
@@ -1069,7 +1078,23 @@ final class SchemaBuilder {
       phrases += multipleOf.map { "must be a multiple of \($0)" }
       phrases += Self.range(minItems, maxItems, noun: "item")
       if uniqueItems { phrases.append("items must all be different") }
-      if !contains.isEmpty { phrases.append("needs at least one item matching `contains`") }
+      if !contains.isEmpty {
+        // `contains` alone needs one matching item; `minContains: 0` needs none.
+        let least = minContains ?? 1
+        let matching = "matching `contains`"
+        switch (least, maxContains) {
+        case (0, nil): break
+        case (1, nil): phrases.append("needs at least one item \(matching)")
+        case (_, nil): phrases.append("needs at least \(Wording.count(least, "item")) \(matching)")
+        case (0, let most?):
+          phrases.append("allows at most \(Wording.count(most, "item")) \(matching)")
+        case (let least, let most?) where least == most:
+          phrases.append("must have exactly \(Wording.count(least, "item")) \(matching)")
+        case (let least, let most?):
+          phrases.append(
+            "must have between \(least) and \(Wording.count(most, "item")) \(matching)")
+        }
+      }
       phrases += Self.range(minProperties, maxProperties, noun: "field")
       if isObject, additionalForbidden { phrases.append("allows no other fields") }
       phrases += nots.map(Self.negation)
@@ -1113,12 +1138,7 @@ final class SchemaBuilder {
       }
       if Array(object.keywords.keys) == ["type"], let value = object["type"]?.value {
         let types = value.string.map { [$0] } ?? value.array?.compactMap(\.string) ?? []
-        let named = types.map { type in
-          type == "null"
-            ? "null"
-            : (type == "integer" || type == "object" || type == "array" ? "an " : "a ") + type
-        }
-        if !named.isEmpty { return "mustn't be \(list(named, "or"))" }
+        if !types.isEmpty { return "mustn't be \(Wording.types(types))" }
       }
       return "mustn't match `not`"
     }
@@ -1237,10 +1257,14 @@ final class SchemaBuilder {
     if !facts.required.isEmpty { effects.append(Wording.required(Array(facts.required))) }
     for (name, parts) in facts.properties where !facts.forbidden.contains(name) {
       let inner = merged(parts.map(\.schema)).facts
-      effects += inner.constraintPhrases(isObject: false).map { "\(Wording.code(name)) \($0)" }
+      var phrases = inner.constraintPhrases(isObject: false)
+      // The branch's shape isn't shown anywhere else, so its type is part of what it asks for.
+      if let types = inner.types { phrases.insert("must be \(Wording.types(types))", at: 0) }
+      effects += phrases.map { "\(Wording.code(name)) \($0)" }
     }
     let forbidden = Array(facts.properties.keys.filter(facts.forbidden.contains))
     if !forbidden.isEmpty { effects.append(Wording.forbidden(forbidden)) }
+    if let types = facts.types { effects.append("it must be \(Wording.types(types))") }
     effects += facts.constraintPhrases(isObject: true).map { "it \($0)" }
     return effects.isEmpty ? nil : effects.joined(separator: "; ")
   }

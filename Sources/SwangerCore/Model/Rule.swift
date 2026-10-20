@@ -40,6 +40,15 @@ enum Wording {
 
   static func code(_ name: String) -> String { "`\(name)`" }
 
+  /// "an integer", "a string or null".
+  static func types(_ types: [String]) -> String {
+    let named = types.map { type in
+      if type == "null" { return "null" }
+      return (["integer", "object", "array"].contains(type) ? "an " : "a ") + type
+    }
+    return list(named, "or")
+  }
+
   static func count(_ number: Int, _ noun: String) -> String {
     "\(number) \(noun)\(number == 1 ? "" : "s")"
   }

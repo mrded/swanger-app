@@ -1,9 +1,9 @@
 ---
 worth: later
-where: Sources/SwangerCore/Model/SchemaBuilder.swift:817
+where: Sources/SwangerCore/Model/SchemaBuilder.swift:823
 added: 2026-10-20
 ---
-# the model ignores propertyNames, dependentSchemas, minContains/maxContains, unevaluatedItems and $dynamicRef
+# the model ignores propertyNames, dependentSchemas, unevaluatedItems and $dynamicRef
 
 These keywords only mark a node as an object or array (they're in `objectKeywords`/`arrayKeywords`);
 none of them becomes a rule or part of the shape, so the diagram shows such schemas as less constrained

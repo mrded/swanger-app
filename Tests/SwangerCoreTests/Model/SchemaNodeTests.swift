@@ -28,12 +28,22 @@ import Testing
     ("{type: array, minItems: 1}", "needs at least 1 item"),
     ("{type: array, maxItems: 3}", "allows at most 3 items"),
     ("{type: array, uniqueItems: true}", "items must all be different"),
+    ("{type: array, contains: {type: string}}", "needs at least one item matching `contains`"),
+    (
+      "{type: array, contains: {type: string}, minContains: 2}",
+      "needs at least 2 items matching `contains`"
+    ),
+    (
+      "{type: array, contains: {type: string}, minContains: 0, maxContains: 3}",
+      "allows at most 3 items matching `contains`"
+    ),
+    ("{type: array, contains: {type: string}, minContains: 0}", nil),
     ("{type: object, minProperties: 2}", "needs at least 2 fields"),
     ("{type: object, additionalProperties: false}", "allows no other fields"),
     ("{type: string, not: {enum: [x]}}", #"mustn't be "x""#),
   ])
-  func constraintWording(schema: String, rule: String) throws {
-    #expect(try node(schema).rules.map(\.text) == [rule])
+  func constraintWording(schema: String, rule: String?) throws {
+    #expect(try node(schema).rules.map(\.text) == (rule.map { [$0] } ?? []))
   }
 
   @Test func stricterBoundWins() throws {
@@ -369,6 +379,23 @@ import Testing
       """)
 
     #expect(schema.rules.map(\.text) == [#"When `status` is "Rejected": `reason` is required"#])
+  }
+
+  @Test func conditionBranchesThatSetATypeSaySo() throws {
+    let schema = try node(
+      """
+      type: object
+      required: [kind]
+      if: {properties: {kind: {const: count}}}
+      then: {properties: {value: {type: integer}}}
+      else: {properties: {value: {type: [string, 'null']}}}
+      """)
+
+    #expect(
+      schema.rules.map(\.text) == [
+        #"When `kind` is "count": `value` must be an integer. "#
+          + "Otherwise: `value` must be a string or null"
+      ])
   }
 
   @Test func conditionFallsBackToItsDescription() throws {
