@@ -61,6 +61,9 @@ public struct SchemaNode: Equatable, Sendable {
   /// `oneOf` and `anyOf` the value must match as well as its own shape, such as the variants of
   /// an object with common fields. A node that is only a choice has it as its kind instead.
   public var choices: [ChoiceSchema] = []
+  /// `$ref`s merged into this schema that couldn't be followed, beside keywords that could: the
+  /// value must match what's shown, and whatever those `$ref`s say too.
+  public var unresolvedRefs: [UnresolvedRef] = []
   /// Other fragments merged into this one through `$ref` or `allOf`, such as `Name` in
   /// `{$ref: Name, maxLength: 10}`, and the ones merged into those in turn.
   public var bases: [FragmentRef] = []
@@ -114,6 +117,17 @@ public struct SchemaNode: Equatable, Sendable {
         $0.node.allowsNull || $0.node.scalar?.types.contains("null") == true
       } == true
     return allowsNull && !saysNull ? "\(base) or null" : base
+  }
+}
+
+/// A `$ref` that couldn't be followed, and why.
+public struct UnresolvedRef: Equatable, Sendable {
+  public var ref: String
+  public var failure: RefFailure
+
+  public init(ref: String, failure: RefFailure) {
+    self.ref = ref
+    self.failure = failure
   }
 }
 

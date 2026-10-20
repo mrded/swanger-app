@@ -249,6 +249,10 @@ final class SchemaBuilder {
       built = Built(node: node)
     } else {
       built = merge(pieces, location: location)
+      // The known keywords make the shape, but it's only part of the schema.
+      built.node.unresolvedRefs = pieces.unresolved.map {
+        UnresolvedRef(ref: $0.ref, failure: $0.failure)
+      }
     }
     built.escapes.formUnion(pieces.escapes)
     built.escapes.subtract(pieces.entered)
@@ -902,13 +906,6 @@ final class SchemaBuilder {
       "uniqueItems", "unevaluatedItems",
     ]
 
-    /// The same facts with nothing required, for a part of a condition that may be missing.
-    var withoutRequired: Facts {
-      var facts = self
-      facts.required = []
-      return facts
-    }
-
     /// With a `type`, these facts without the limits that only apply to other types, which JSON
     /// Schema ignores, such as `minimum` on a string. `format` stays: OpenAPI puts it on numbers.
     var applicable: Facts {
@@ -1362,7 +1359,7 @@ final class SchemaBuilder {
   /// the object itself were already worded by its parent.
   private func clauses(
     _ facts: Facts, prefix: String, visited: Set<NodeLocation>, present: Set<String>,
-    ownChecked: Bool = false
+    ownChecked: Bool = false, missingParent: String? = nil
   ) -> [String]? {
     // Of the checks on the object itself, only `type: object` goes without saying.
     guard facts.choices.isEmpty, facts.conditions.isEmpty, facts.patternProperties.isEmpty,
@@ -1402,23 +1399,33 @@ final class SchemaBuilder {
         checks.append(check)
       }
       if !checks.isEmpty {
-        clauses.append(
-          "\(path) \(canBeMissing ? "is missing or " : "")\(checks.joined(separator: " and "))")
+        let checked = checks.joined(separator: " and ")
+        if canBeMissing {
+          clauses.append("\(path) is missing or \(checked)")
+        } else if let parent = missingParent {
+          // Required here, but only once its parent is there.
+          clauses.append("\(Wording.code(parent)) is missing or \(path) \(checked)")
+        } else {
+          clauses.append("\(path) \(checked)")
+        }
         mentioned.insert(name)
       }
       if !inner.properties.isEmpty || !inner.required.isEmpty {
-        // A missing parent matches as well, so nothing below it is known to be there.
+        // A missing parent matches as well, so what's required below it is "parent is missing
+        // or …".
         guard
           let nested = self.clauses(
-            canBeMissing ? inner.withoutRequired : inner, prefix: prefix + name + ".",
-            visited: resolved.visited, present: [], ownChecked: true)
+            inner, prefix: prefix + name + ".", visited: resolved.visited, present: [],
+            ownChecked: true, missingParent: canBeMissing ? prefix + name : missingParent)
         else { return nil }
         clauses += nested
         if !nested.isEmpty { mentioned.insert(name) }
       }
     }
     for name in facts.required where !mentioned.contains(name) {
-      clauses.append("\(Wording.code(prefix + name)) is present")
+      let present = "\(Wording.code(prefix + name)) is present"
+      clauses.append(
+        missingParent.map { "\(Wording.code($0)) is missing or \(present)" } ?? present)
     }
     return clauses
   }

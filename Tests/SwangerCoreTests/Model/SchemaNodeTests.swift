@@ -544,6 +544,20 @@ import Testing
     #expect(schema.rules.map(\.text) == ["When the `if` schema matches: `d` is required"])
   }
 
+  @Test func optionalParentsNestedRequirementIsKept() throws {
+    let schema = try node(
+      """
+      type: object
+      if: {properties: {flag: {const: true}, parent: {required: [child], properties: {child: {const: 1}}}}, required: [flag]}
+      then: {required: [x]}
+      """)
+
+    #expect(
+      schema.rules.map(\.text) == [
+        "When `flag` is true and `parent` is missing or `parent.child` is 1: `x` is required"
+      ])
+  }
+
   @Test func conditionFallsBackToItsDescription() throws {
     let schema = try node(
       "{type: object, if: {description: the order is international, minProperties: 3}, then: {required: [customs]}}"
@@ -597,6 +611,14 @@ import Testing
       return
     }
     #expect(ref == "#/components/schemas/Missing")
+  }
+
+  @Test func unresolvedRefBesideOtherKeywordsIsKept() throws {
+    let schema = try node(
+      "{$ref: '#/components/schemas/Missing', type: object, properties: {a: {type: string}}}")
+
+    #expect(schema.object?.fields.map(\.name) == ["a"])
+    #expect(schema.unresolvedRefs.map(\.ref) == ["#/components/schemas/Missing"])
   }
 
   @Test func mutuallyRecursiveFragments() throws {
