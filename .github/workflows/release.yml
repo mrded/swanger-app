@@ -52,9 +52,9 @@ jobs:
           notarised=false
           if [[ "$HAS_DEVELOPER_ID" == true ]]; then signed=true; fi
           if [[ "$signed" == true && "$HAS_NOTARY" == true ]]; then notarised=true; fi
-          # Only a notarised build of a plain version (v1.2.3, not v1.2.3-beta.1) is a full release.
-          prerelease=true
-          if [[ "$notarised" == true && "$version" != *-* ]]; then prerelease=false; fi
+          # A plain version (v1.2.3, not v1.2.3-beta.1) is a full release, signed or not.
+          prerelease=false
+          if [[ "$version" == *-* ]]; then prerelease=true; fi
           {
             echo "version=$version"
             echo "signed=$signed"
@@ -63,9 +63,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Swanger $version: signed=$signed notarised=$notarised prerelease=$prerelease"
           if [[ "$signed" != true ]]; then
-            echo "::warning::DEVELOPER_ID_P12 secrets are missing; publishing an ad hoc signed pre-release."
+            echo "::warning::DEVELOPER_ID_P12 secrets are missing; publishing an ad hoc signed build."
           elif [[ "$notarised" != true ]]; then
-            echo "::warning::ASC_* secrets are missing; publishing a signed but not notarised pre-release."
+            echo "::warning::ASC_* secrets are missing; publishing a signed but not notarised build."
           fi
 
       - name: Import the Developer ID certificate
@@ -193,7 +193,7 @@ jobs:
             else
               how="ad hoc signed and not notarised"
             fi
-            flags+=(--notes "This build is $how. To open it, right-click Swanger.app and choose Open, or run \`xattr -dr com.apple.quarantine Swanger.app\`.")
+            flags+=(--notes "This build is $how, so macOS blocks it the first time it's opened. After that first attempt, choose **Open Anyway** in **System Settings › Privacy & Security**, or run \`xattr -dr com.apple.quarantine /Applications/Swanger.app\`.")
           fi
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
             "build/dist/Swanger-$VERSION.zip" \
@@ -201,7 +201,7 @@ jobs:
             build/dist/SHA256SUMS.txt
 
       - name: Check out the Homebrew tap
-        if: steps.version.outputs.prerelease == 'false' && env.HAS_TAP_TOKEN == 'true'
+        if: steps.version.outputs.notarised == 'true' && steps.version.outputs.prerelease == 'false' && env.HAS_TAP_TOKEN == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ env.TAP_REPOSITORY }}
@@ -209,7 +209,7 @@ jobs:
           path: build/tap
 
       - name: Update the Homebrew cask
-        if: steps.version.outputs.prerelease == 'false' && env.HAS_TAP_TOKEN == 'true'
+        if: steps.version.outputs.notarised == 'true' && steps.version.outputs.prerelease == 'false' && env.HAS_TAP_TOKEN == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           SHA256: ${{ steps.package.outputs.zip_sha256 }}

@@ -100,7 +100,7 @@ A tag with a suffix, such as `v0.2.0-beta.1`, is always published as a pre-relea
 ### Secrets
 
 Set these under **Settings › Secrets and variables › Actions**. Each group is optional: when one is missing,
-its steps are skipped and the release is published as a pre-release.
+its steps are skipped and the build is published without it.
 
 | Secret | What it is |
 |---|---|
@@ -115,12 +115,12 @@ What gets published depends on which are set:
 
 | Secrets set | Result |
 |---|---|
-| None | Ad hoc signed build, published as a pre-release |
-| `DEVELOPER_ID_*` | Signed with Developer ID but not notarised; pre-release |
-| `DEVELOPER_ID_*` and `ASC_*` | Signed, notarised and stapled; a full release |
+| None | Ad hoc signed build; the release notes explain how to open it past Gatekeeper |
+| `DEVELOPER_ID_*` | Signed with Developer ID but not notarised; the same notes |
+| `DEVELOPER_ID_*` and `ASC_*` | Signed, notarised and stapled; opens without a warning |
 | All of them | As above, and `Casks/swanger.rb` in the tap is updated to the new version and checksum |
 
-The cask is only updated for full releases, so `brew install --cask mrded/tap/swanger` always installs a
+The cask is only updated for notarised releases without a suffix, so `brew install --cask mrded/tap/swanger` always installs a
 notarised build.
 
 The certificate is imported into a temporary keychain that is deleted when the job ends.
