@@ -15,9 +15,22 @@
 		5A0000000000000000000004 /* Swanger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Swanger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5A000000000000000000001A /* Exceptions for "Swanger" folder in "Swanger" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5A0000000000000000000006 /* Swanger */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5A0000000000000000000005 /* Swanger */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5A000000000000000000001A /* Exceptions for "Swanger" folder in "Swanger" target */,
+			);
 			path = Swanger;
 			sourceTree = "<group>";
 		};
@@ -201,6 +214,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Swanger/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Swanger;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Dmitry Demenchuk. MIT License.";
@@ -227,6 +241,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Swanger/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Swanger;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Dmitry Demenchuk. MIT License.";
