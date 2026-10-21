@@ -266,7 +266,7 @@ public struct Variant: Equatable, Sendable {
 }
 
 /// `a`, `a or b`, `a, b or c`.
-func list(_ items: [String], _ conjunction: String) -> String {
+package func list(_ items: [String], _ conjunction: String) -> String {
   switch items.count {
   case 0: ""
   case 1: items[0]

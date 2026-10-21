@@ -30,4 +30,5 @@ Ways to find the rest, roughly in order of value:
 5. Optionally, a dev-only cross-check of merged keywords against `allof-merge` (JS, via JavaScriptCore or
    node in the test run). Not to ship: it flattens away fragment provenance, which is the model's point.
 
-The swift-json-schema `$ref`-sibling bug the test works around is tracked in step 7 of the plan.
+The test runs against `PayloadValidator`, which works around swift-json-schema's `$ref`-sibling bug (step 7
+of the plan), so it no longer skips those cases.

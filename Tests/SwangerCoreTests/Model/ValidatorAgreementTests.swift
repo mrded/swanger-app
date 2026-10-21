@@ -1,7 +1,7 @@
 import Foundation
-import JSONSchema
 import OrderedCollections
 import OrderedJSON
+import SwangerValidation
 import Testing
 
 @testable import SwangerCore
@@ -113,8 +113,7 @@ import Testing
   @Test func modelAcceptsWhatTheValidatorAccepts() throws {
     let cases = try Self.cases()
     let spec = try Spec.load(try Self.writeSpec(cases))
-    let defs = Self.atoms.enumerated().map { #""A\#($0.offset)":\#($0.element)"# }.joined(
-      separator: ",")
+    let validator = PayloadValidator(spec: spec)
 
     var rootsByOperation: [String: RootSchema] = [:]
     for root in spec.requestSchemas {
@@ -125,14 +124,10 @@ import Testing
     var impossible: [String] = []
     for (index, item) in cases.enumerated() {
       let root = try #require(rootsByOperation["c\(index)"], "No root for \(item.label)")
-      let text = item.schema.replacingOccurrences(
-        of: #"REF\((\d+)\)"#, with: "#/$defs/A$1", options: .regularExpression)
-      let validator = try Schema(instance: #"{"$defs":{\#(defs)},"allOf":[\#(text)]}"#)
 
       var anyValid = false
-      if Self.validatorIsWrong(about: item) { continue }
       for sample in Self.samples(for: item) {
-        guard validator.validate(sample, at: JSONSchema.JSONPointer()).isValid else { continue }
+        guard validator.isValid(sample, forSchemaAt: root.id.location) else { continue }
         anyValid = true
         if let problem = Self.problem(root.node, accepting: sample) {
           disagreements.append("\(item.label): \(sample) is valid, but \(problem)")
@@ -167,17 +162,6 @@ import Testing
   }
 
   // MARK: - Helpers
-
-  /// swift-json-schema lets `additionalProperties` and `items` see the `properties` and
-  /// `prefixItems` of a `$ref` beside them, so `{$ref: X, additionalProperties: false}` accepts
-  /// X's fields. JSON Schema says they're other fields there, as ajv agrees. Those cases are left
-  /// out until the library is fixed.
-  private static func validatorIsWrong(about item: Case) -> Bool {
-    item.label.contains("ref ") && item.label.contains(" with ")
-      && ["additionalProperties", #""items""#].contains {
-        atoms[Int(item.label.split(separator: " ").last!)!].contains($0)
-      }
-  }
 
   /// The samples for a case, wrapped the way its context expects.
   private static func samples(for item: Case) -> [JSONValue] {

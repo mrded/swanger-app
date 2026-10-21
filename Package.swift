@@ -37,7 +37,7 @@ let package = Package(
       name: "SwangerCoreTests",
       dependencies: [
         "SwangerCore",
-        .product(name: "JSONSchema", package: "swift-json-schema"),
+        "SwangerValidation",
         .product(name: "OrderedJSON", package: "swift-json-schema"),
         .product(name: "OrderedCollections", package: "swift-collections"),
       ],
@@ -45,7 +45,12 @@ let package = Package(
     ),
     .testTarget(
       name: "SwangerValidationTests",
-      dependencies: ["SwangerValidation"]
+      dependencies: [
+        "SwangerCore",
+        "SwangerValidation",
+        .product(name: "OrderedJSON", package: "swift-json-schema"),
+      ],
+      resources: [.copy("Fixtures")]
     ),
   ],
   swiftLanguageModes: [.v6]

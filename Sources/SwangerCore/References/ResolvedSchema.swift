@@ -23,6 +23,23 @@ public indirect enum ResolvedSchema: Equatable, Sendable {
   public var object: SchemaObject? {
     if case .object(let object) = self { object } else { nil }
   }
+
+  /// Calls `visit` with the origin of every link in this schema and its subschemas, without
+  /// following them.
+  func forEachLink(_ visit: (SchemaOrigin) -> Void) {
+    guard case .object(let object) = self else { return }
+    if case .link(let origin) = object.reference?.target { visit(origin) }
+    for keyword in object.keywords.values {
+      switch keyword {
+      case .value: continue
+      case .schema(let schema): schema.forEachLink(visit)
+      case .schemas(let schemas):
+        for schema in schemas { schema.forEachLink(visit) }
+      case .schemaMap(let schemas):
+        for schema in schemas.values { schema.forEachLink(visit) }
+      }
+    }
+  }
 }
 
 /// A schema object: its keywords in the order they're written, and its `$ref`.

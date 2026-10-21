@@ -1,0 +1,203 @@
+openapi: 3.1.0
+info:
+  title: Payments
+  version: '1'
+paths:
+  /payments:
+    post:
+      operationId: createPayment
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewPayment'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+              example:
+                id: 6f1c2a54-58b1-4a0e-9d7e-0b8f4e1f2c3d
+                amount: 1250
+                currency: GBP
+  /refunds:
+    post:
+      operationId: createRefund
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Refund'
+            examples:
+              requested:
+                value:
+                  paymentId: 6f1c2a54-58b1-4a0e-9d7e-0b8f4e1f2c3d
+                  status: Requested
+              rejected:
+                summary: Rejected, with a reason
+                value:
+                  paymentId: 6f1c2a54-58b1-4a0e-9d7e-0b8f4e1f2c3d
+                  status: Rejected
+                  reason: Outside the refund window
+                  notes: null
+      responses:
+        '204':
+          description: Refund requested
+  /tags:
+    put:
+      operationId: replaceTags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 3
+              uniqueItems: true
+              items:
+                $ref: 'common.yaml#/Tag'
+            example:
+              - name: food
+                children:
+                  - name: fruit
+                    children:
+                      - name: apples
+              - name: drink
+      responses:
+        '204':
+          description: Replaced
+  /chains:
+    get:
+      operationId: getChain
+      responses:
+        '200':
+          description: A chain that never ends
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Link'
+components:
+  schemas:
+    NewPayment:
+      type: object
+      additionalProperties: false
+      required: [amount, currency, method]
+      properties:
+        amount:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        currency:
+          type: string
+          enum: [GBP, EUR]
+        reference:
+          type: string
+          pattern: '^[A-Z]{3}-[0-9]+$'
+          maxLength: 20
+        email:
+          type: string
+          format: email
+        method:
+          $ref: '#/components/schemas/Method'
+        billing:
+          $ref: 'common.yaml#/Address'
+          unevaluatedProperties: false
+        metadata:
+          type: object
+          maxProperties: 2
+          additionalProperties:
+            type: string
+      examples:
+        - amount: 1250
+          currency: GBP
+          method: { type: card, number: '4111111111111111', expiry: '12/30' }
+          billing: { line1: 1 High Street, postcode: AB1 2CD }
+        - amount: 99
+          currency: GBP
+          reference: INV-1042
+          email: ada@example.com
+          method: { type: bank-transfer, sortCode: '12-34-56', accountNumber: '12345678' }
+          metadata: { channel: web }
+    Method:
+      oneOf:
+        - $ref: '#/components/schemas/Card'
+        - $ref: '#/components/schemas/BankTransfer'
+      discriminator:
+        propertyName: type
+    Card:
+      type: object
+      additionalProperties: false
+      required: [type, number]
+      properties:
+        type:
+          const: card
+        number:
+          type: string
+          minLength: 16
+          maxLength: 19
+        expiry:
+          type: string
+          pattern: '^[0-9]{2}/[0-9]{2}$'
+    BankTransfer:
+      type: object
+      additionalProperties: false
+      required: [type, sortCode, accountNumber]
+      properties:
+        type:
+          const: bank-transfer
+        sortCode:
+          type: string
+          pattern: '^[0-9]{2}-[0-9]{2}-[0-9]{2}$'
+        accountNumber:
+          type: string
+          pattern: '^[0-9]{8}$'
+    PaymentBase:
+      type: object
+      properties:
+        amount:
+          type: integer
+        currency:
+          type: string
+    Payment:
+      $ref: '#/components/schemas/PaymentBase'
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+      unevaluatedProperties: false
+    Refund:
+      type: object
+      required: [paymentId, status]
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [Requested, Rejected]
+        reason:
+          type: string
+        notes:
+          type: [string, 'null']
+      if:
+        properties:
+          status:
+            const: Rejected
+        required: [status]
+      then:
+        description: A rejected refund needs a reason.
+        required: [reason]
+      dependentRequired:
+        notes: [reason]
+      not:
+        required: [amount]
+    Link:
+      type: object
+      required: [name, next]
+      properties:
+        name:
+          type: string
+        next:
+          $ref: '#/components/schemas/Link'
