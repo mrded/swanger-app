@@ -168,6 +168,62 @@ import Testing
     #expect(await changes.wait(for: 1))
   }
 
+  @Test func callsBackWhenItsOnlyFileWasDeletedBeforeItStarted() async throws {
+    let readAt = Date()
+    try await Task.sleep(for: .milliseconds(20))
+    try FileManager.default.removeItem(at: spec)
+
+    let changes = Changes()
+    let watcher = FileWatcher(urls: [spec], changedSince: readAt, latency: .milliseconds(50)) {
+      changes.record()
+    }
+    defer { watcher.cancel() }
+
+    #expect(await changes.wait(for: 1))
+  }
+
+  @Test func noticesALinkPartWayAlongAChainBeingRepointed() async throws {
+    // `schemas/current` → `shared/live` → `versions/v1`, and `live` is repointed.
+    for version in ["v1", "v2"] {
+      let versionFolder = folder.appending(path: "versions/\(version)")
+      try FileManager.default.createDirectory(at: versionFolder, withIntermediateDirectories: true)
+      try "Pet: {title: \(version)}\n".write(
+        to: versionFolder.appending(path: "Pet.yaml"), atomically: false, encoding: .utf8)
+    }
+    for name in ["schemas", "shared"] {
+      try FileManager.default.createDirectory(
+        at: folder.appending(path: name), withIntermediateDirectories: false)
+    }
+    let live = folder.appending(path: "shared/live")
+    try FileManager.default.createSymbolicLink(
+      atPath: live.path, withDestinationPath: "../versions/v1")
+    let current = folder.appending(path: "schemas/current")
+    try FileManager.default.createSymbolicLink(
+      atPath: current.path, withDestinationPath: "../shared/live")
+
+    let changes = Changes()
+    let watcher = FileWatcher(
+      urls: [spec, current.appending(path: "Pet.yaml")], latency: .milliseconds(50)
+    ) { changes.record() }
+    defer { watcher.cancel() }
+
+    try FileManager.default.removeItem(at: live)
+    try FileManager.default.createSymbolicLink(
+      atPath: live.path, withDestinationPath: "../versions/v2")
+
+    #expect(await changes.wait(for: 1))
+  }
+
+  @Test func doesNotHangOnALoopOfLinks() async throws {
+    let first = folder.appending(path: "a")
+    let second = folder.appending(path: "b")
+    try FileManager.default.createSymbolicLink(atPath: first.path, withDestinationPath: "b")
+    try FileManager.default.createSymbolicLink(atPath: second.path, withDestinationPath: "a")
+
+    let watcher = FileWatcher(urls: [spec, first.appending(path: "Pet.yaml")]) {}
+    watcher.cancel()
+  }
+
   @Test func doesNotCallBackForAFileMissingSinceBeforeItWasRead() async throws {
     let missing = folder.appending(path: "never.yaml")
     try await Task.sleep(for: .milliseconds(20))

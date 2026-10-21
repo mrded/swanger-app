@@ -24,15 +24,10 @@ public final class FileWatcher: @unchecked Sendable {
         size = (attributes?[.size] as? NSNumber)?.intValue
         modified = attributes?[.modificationDate] as? Date
       }
-
-      init() {}
     }
 
     var link: Item?
     var file: Item
-
-    /// Nothing known, so any file differs from it.
-    init() { file = Item() }
 
     init(_ url: URL) {
       let target = url.resolvingSymlinksInPath()
@@ -53,6 +48,9 @@ public final class FileWatcher: @unchecked Sendable {
   private var fingerprints: [Fingerprint]
   private var pending: DispatchWorkItem?
   private var isCancelled = false
+  /// Calls back on the first settle whatever the fingerprints say: a file changed after
+  /// `changedSince` but before the watcher started.
+  private var changedBeforeStart = false
 
   /// Starts watching `urls`. Files that don't exist yet are watched for being created.
   ///
@@ -86,8 +84,8 @@ public final class FileWatcher: @unchecked Sendable {
           return changed ?? .distantPast >= changedSince
         })
       {
-        // Settling compares with the fingerprints, so forget the ones taken after the change.
-        fingerprints = unique.map { _ in Fingerprint() }
+        // The fingerprints were taken after the change, so settling wouldn't see one.
+        changedBeforeStart = true
         eventArrived()
       }
     }
@@ -171,21 +169,38 @@ public final class FileWatcher: @unchecked Sendable {
     return attributes?[.modificationDate] as? Date
   }
 
-  /// The folders holding a symbolic link to a folder on the way to `url`, such as `schemas` for
-  /// `schemas/current/Pet.yaml` when `current` is a link. Links in the file's name itself are
-  /// already covered by watching the file's folder.
+  /// The folders holding each symbolic link met on the way to `url`, following chains of links
+  /// one at a time: `schemas` and `shared` for `schemas/current/Pet.yaml` when `current` points
+  /// at `shared/live`, itself a link. Repointing any of them changes its folder.
   private static func linkFolders(of url: URL) -> [URL] {
+    /// As the kernel allows (`MAXSYMLINKS`), so a loop of links ends.
+    let maximumLinks = 32
     var folders: [URL] = []
     var current = URL(filePath: "/")
-    for component in url.deletingLastPathComponent().pathComponents.dropFirst() {
-      let next = current.appending(path: component)
-      let attributes = try? FileManager.default.attributesOfItem(atPath: next.path)
-      if attributes?[.type] as? FileAttributeType == .typeSymbolicLink {
-        folders.append(current)
-        current = next.resolvingSymlinksInPath()
-      } else {
-        current = next
+    var remaining = Array(url.pathComponents.dropFirst())
+    var links = 0
+    while !remaining.isEmpty {
+      let component = remaining.removeFirst()
+      if component == "." { continue }
+      if component == ".." {
+        current = current.deletingLastPathComponent()
+        continue
       }
+      let next = current.appending(path: component)
+      guard links < maximumLinks,
+        let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: next.path)
+      else {
+        current = next
+        continue
+      }
+      links += 1
+      if !folders.contains(current) { folders.append(current) }
+      var parts = (destination as NSString).pathComponents
+      if parts.first == "/" {
+        current = URL(filePath: "/")
+        parts.removeFirst()
+      }
+      remaining = parts + remaining
     }
     return folders
   }
@@ -209,8 +224,9 @@ public final class FileWatcher: @unchecked Sendable {
     // A file replaced or deleted keeps its old source watching nothing, so move to the new one.
     arm()
     let current = urls.map(Fingerprint.init)
-    guard current != fingerprints else { return }
+    guard current != fingerprints || changedBeforeStart else { return }
     fingerprints = current
+    changedBeforeStart = false
     onChange()
   }
 }
