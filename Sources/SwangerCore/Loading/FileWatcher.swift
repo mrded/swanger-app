@@ -80,7 +80,11 @@ public final class FileWatcher: @unchecked Sendable {
       if current != fingerprints {
         eventArrived()
       } else if let changedSince,
-        current.contains(where: { $0.modified ?? .distantPast >= changedSince })
+        unique.indices.contains(where: { index in
+          // A file deleted since leaves no date of its own, but its folder's changes.
+          let changed = current[index].modified ?? Self.folderModified(above: unique[index])
+          return changed ?? .distantPast >= changedSince
+        })
       {
         // Settling compares with the fingerprints, so forget the ones taken after the change.
         fingerprints = unique.map { _ in Fingerprint() }
@@ -113,14 +117,16 @@ public final class FileWatcher: @unchecked Sendable {
 
   /// Opens a source for each file and folder that exists now. A file whose folder is missing is
   /// watched through the nearest folder above it that exists, moving down as folders appear. A
-  /// symbolic link is watched along with the file it points to now, and that file's folder.
+  /// symbolic link is watched along with the file it points to now, and that file's folder, and
+  /// so is the folder holding each link to a folder along the way, so repointing it is seen.
   ///
   /// A path still on the same file keeps its source; only the rest are reopened, so a change
   /// doesn't need a second descriptor for every file while the old ones close.
   private func arm() {
     let targets = urls.map { $0.resolvingSymlinksInPath() }.filter { !urls.contains($0) }
     let files = urls + targets
-    let folders = files.map { Self.nearestExistingFolder(above: $0) }
+    let folders =
+      files.map { Self.nearestExistingFolder(above: $0) } + urls.flatMap(Self.linkFolders)
     var wanted: [URL] = []
     for url in files + folders where !wanted.contains(url) { wanted.append(url) }
 
@@ -156,6 +162,32 @@ public final class FileWatcher: @unchecked Sendable {
       folder = folder.deletingLastPathComponent()
     }
     return folder
+  }
+
+  /// When the nearest folder above `url` that exists last changed.
+  private static func folderModified(above url: URL) -> Date? {
+    let folder = nearestExistingFolder(above: url)
+    let attributes = try? FileManager.default.attributesOfItem(atPath: folder.path)
+    return attributes?[.modificationDate] as? Date
+  }
+
+  /// The folders holding a symbolic link to a folder on the way to `url`, such as `schemas` for
+  /// `schemas/current/Pet.yaml` when `current` is a link. Links in the file's name itself are
+  /// already covered by watching the file's folder.
+  private static func linkFolders(of url: URL) -> [URL] {
+    var folders: [URL] = []
+    var current = URL(filePath: "/")
+    for component in url.deletingLastPathComponent().pathComponents.dropFirst() {
+      let next = current.appending(path: component)
+      let attributes = try? FileManager.default.attributesOfItem(atPath: next.path)
+      if attributes?[.type] as? FileAttributeType == .typeSymbolicLink {
+        folders.append(current)
+        current = next.resolvingSymlinksInPath()
+      } else {
+        current = next
+      }
+    }
+    return folders
   }
 
   private func disarm() {

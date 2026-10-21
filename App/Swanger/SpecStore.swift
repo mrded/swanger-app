@@ -30,9 +30,10 @@ final class SpecStore {
     self.url = url
   }
 
-  /// Loads the spec now and again whenever its files change.
+  /// Loads the spec now and again whenever its files change. Called each time the window appears,
+  /// so after ``stop()`` it loads again, picking up edits made while nothing was watching.
   func start() {
-    if spec == nil && loadTask == nil { reload() }
+    if watcher == nil && loadTask == nil { reload() }
   }
 
   /// Follows the document to its new place, and loads it from there.

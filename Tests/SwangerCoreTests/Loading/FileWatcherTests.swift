@@ -127,6 +127,60 @@ import Testing
     #expect(after[spec.path] != before[spec.path])
   }
 
+  @Test func noticesASymlinkedFolderBeingRepointed() async throws {
+    for version in ["v1", "v2"] {
+      let versionFolder = folder.appending(path: "versions/\(version)")
+      try FileManager.default.createDirectory(at: versionFolder, withIntermediateDirectories: true)
+      try "Pet: {title: \(version)}\n".write(
+        to: versionFolder.appending(path: "Pet.yaml"), atomically: false, encoding: .utf8)
+    }
+    let schemas = folder.appending(path: "schemas")
+    try FileManager.default.createDirectory(at: schemas, withIntermediateDirectories: false)
+    let current = schemas.appending(path: "current")
+    try FileManager.default.createSymbolicLink(
+      at: current, withDestinationURL: folder.appending(path: "versions/v1"))
+
+    let changes = Changes()
+    let watcher = FileWatcher(
+      urls: [spec, current.appending(path: "Pet.yaml")], latency: .milliseconds(50)
+    ) { changes.record() }
+    defer { watcher.cancel() }
+
+    try FileManager.default.removeItem(at: current)
+    try FileManager.default.createSymbolicLink(
+      at: current, withDestinationURL: folder.appending(path: "versions/v2"))
+
+    #expect(await changes.wait(for: 1))
+  }
+
+  @Test func callsBackForAFileDeletedBeforeItStarted() async throws {
+    // The file is read, then deleted before the watcher exists, as when a load is still running.
+    let readAt = Date()
+    try await Task.sleep(for: .milliseconds(20))
+    try FileManager.default.removeItem(at: common)
+
+    let changes = Changes()
+    let watcher = FileWatcher(
+      urls: [spec, common], changedSince: readAt, latency: .milliseconds(50)
+    ) { changes.record() }
+    defer { watcher.cancel() }
+
+    #expect(await changes.wait(for: 1))
+  }
+
+  @Test func doesNotCallBackForAFileMissingSinceBeforeItWasRead() async throws {
+    let missing = folder.appending(path: "never.yaml")
+    try await Task.sleep(for: .milliseconds(20))
+    let changes = Changes()
+    let watcher = FileWatcher(
+      urls: [spec, missing], changedSince: Date(), latency: .milliseconds(50)
+    ) { changes.record() }
+    defer { watcher.cancel() }
+
+    try await Task.sleep(for: .milliseconds(400))
+    #expect(changes.count == 0)
+  }
+
   @Test func noticesChangesToASymlinksTarget() async throws {
     let elsewhere = folder.appending(path: "elsewhere")
     try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: false)
