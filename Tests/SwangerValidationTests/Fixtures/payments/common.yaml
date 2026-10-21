@@ -1,0 +1,21 @@
+Address:
+  type: object
+  required: [line1, postcode]
+  properties:
+    line1:
+      type: string
+    line2:
+      type: string
+    postcode:
+      type: string
+Tag:
+  type: object
+  required: [name]
+  properties:
+    name:
+      type: string
+      minLength: 1
+    children:
+      type: array
+      items:
+        $ref: '#/Tag'

@@ -120,6 +120,20 @@ public final class RefResolver {
     return expand(schema, path: &path)
   }
 
+  /// The schemas at `locations` and every schema their links lead to, in graph form, by location.
+  /// Links in keywords the model doesn't show, such as `propertyNames`, are followed too, so a
+  /// validator gets everything it needs.
+  public func schemas(reachableFrom locations: [NodeLocation]) -> [NodeLocation: ResolvedSchema] {
+    var found: [NodeLocation: ResolvedSchema] = [:]
+    var pending = locations
+    while let location = pending.popLast() {
+      guard let schema = schema(at: location), found[schema.location] == nil else { continue }
+      found[schema.location] = schema
+      schema.forEachLink { pending.append($0.location) }
+    }
+    return found
+  }
+
   /// The name to show for the schema at `location`.
   public func origin(of location: NodeLocation) -> SchemaOrigin {
     let tokens = location.pointer.tokens

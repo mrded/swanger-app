@@ -25,10 +25,10 @@ public struct Rule: Equatable, Sendable, CustomStringConvertible {
   public var description: String { text }
 }
 
-/// Builds the wording of rules.
-enum Wording {
+/// Builds the wording of rules, and of validation issues in `SwangerValidation`.
+package enum Wording {
   /// A value as JSON: `"Rejected"`, `5`, `true`, `null`.
-  static func literal(_ value: JSONValue) -> String {
+  package static func literal(_ value: JSONValue) -> String {
     switch value {
     case .string(let text): "\"\(text)\""
     case .numberLiteral(let number): number.rawValue
@@ -38,10 +38,10 @@ enum Wording {
     }
   }
 
-  static func code(_ name: String) -> String { "`\(name)`" }
+  package static func code(_ name: String) -> String { "`\(name)`" }
 
   /// "an integer", "a string or null".
-  static func types(_ types: [String]) -> String {
+  package static func types(_ types: [String]) -> String {
     let named = types.map { type in
       if type == "null" { return "null" }
       return (["integer", "object", "array"].contains(type) ? "an " : "a ") + type
@@ -49,28 +49,28 @@ enum Wording {
     return list(named, "or")
   }
 
-  static func count(_ number: Int, _ noun: String) -> String {
+  package static func count(_ number: Int, _ noun: String) -> String {
     "\(number) \(noun)\(number == 1 ? "" : "s")"
   }
 
   /// "must be "a"", "must be one of "a", "b" or "c"".
-  static func allowedValues(_ values: [JSONValue]) -> String {
+  package static func allowedValues(_ values: [JSONValue]) -> String {
     values.count == 1
       ? "must be \(literal(values[0]))"
       : "must be one of \(list(values.map(literal), "or"))"
   }
 
   /// "`a` is required", "`a` and `b` are required".
-  static func required(_ names: [String]) -> String {
+  package static func required(_ names: [String]) -> String {
     "\(list(names.map(code), "and")) \(names.count == 1 ? "is" : "are") required"
   }
 
   /// "`a` isn't allowed", "`a` and `b` aren't allowed".
-  static func forbidden(_ names: [String]) -> String {
+  package static func forbidden(_ names: [String]) -> String {
     "\(list(names.map(code), "and")) \(names.count == 1 ? "isn't" : "aren't") allowed"
   }
 
-  static func format(_ format: String) -> String {
+  package static func format(_ format: String) -> String {
     let described: String? =
       switch format {
       case "date": "a date, such as 2024-01-31"

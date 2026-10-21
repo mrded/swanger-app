@@ -1,0 +1,38 @@
+openapi: 3.0.3
+info:
+  title: Notes
+  version: '1'
+paths:
+  /notes:
+    post:
+      operationId: createNote
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Note'
+            example:
+              text: null
+              priority: 3
+              due: '2024-01-31'
+      responses:
+        '204':
+          description: Created
+components:
+  schemas:
+    Note:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          nullable: true
+        priority:
+          type: integer
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 5
+        due:
+          type: string
+          format: date
+          example: '2024-01-31'

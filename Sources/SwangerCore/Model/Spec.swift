@@ -24,6 +24,10 @@ public struct Spec: Sendable {
   public let warnings: [LoadWarning]
   /// Every file read, the spec first, including ones that couldn't be.
   public let referencedFiles: [URL]
+  /// Every schema the roots and fragments reach, in JSON Schema 2020-12 with each `$ref` as a
+  /// link, by location. A root's schema is at its ``RootID/location``, a fragment's at its
+  /// ``FragmentRef/id``. `SwangerValidation` compiles these.
+  public let resolvedSchemas: [NodeLocation: ResolvedSchema]
 
   /// Reads the spec at `url` and builds its model.
   public static func load(_ url: URL) throws(LoadError) -> Spec {
@@ -56,6 +60,8 @@ public struct Spec: Sendable {
       let rhsCount = index.roots(using: rhs.element.reference).count
       return lhsCount != rhsCount ? lhsCount > rhsCount : lhs.offset < rhs.offset
     }.map(\.element)
+    resolvedSchemas = resolver.schemas(
+      reachableFrom: roots.map(\.id.location) + self.fragments.map(\.reference.id))
     warnings = resolver.warnings
     referencedFiles = resolver.referencedFiles
   }
