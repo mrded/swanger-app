@@ -68,13 +68,14 @@ final class SpecStore {
     let url = url
     let started = Date()
     loadTask = Task {
-      let result = await Task.detached(priority: .userInitiated) {
+      // A large stack, because building the model recurses as deep as the schemas nest.
+      let result = await LargeStack.run {
         Result { () throws(LoadError) in
           let spec = try Spec.load(url)
           return Loaded(
             spec: spec, searchIndex: SearchIndex(spec: spec), validator: .init(spec: spec))
         }
-      }.value
+      }
       guard !Task.isCancelled else { return }
       apply(result, loadedAt: started)
     }

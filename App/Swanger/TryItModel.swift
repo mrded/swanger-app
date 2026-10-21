@@ -68,7 +68,7 @@ final class TryItModel {
   private func check(after delay: Duration = .milliseconds(300)) {
     checkTask?.cancel()
     let text = text
-    let (schema, specURL, node, validator) = (schema, specURL, node, validator)
+    let (schema, node, validator) = (schema, node, validator)
     let location: NodeLocation =
       switch schema {
       case .root(let id): id.location
@@ -78,9 +78,9 @@ final class TryItModel {
       try? await Task.sleep(for: delay)
       guard !Task.isCancelled else { return }
       // The last outcome stays until this one is ready, so the issue list doesn't flicker.
-      let outcome = await Task.detached(priority: .userInitiated) {
+      let outcome = await LargeStack.run {
         Self.check(text, against: node, at: location, with: validator)
-      }.value
+      }
       guard !Task.isCancelled else { return }
       self.outcome = outcome
     }

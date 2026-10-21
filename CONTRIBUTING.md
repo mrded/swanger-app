@@ -28,11 +28,23 @@ The `Makefile` wraps the usual commands; `make` lists them.
 ```sh
 make check                      # lint, test and build the app, as CI does
 make test FILTER=SkeletonTests  # only the matching tests
+make real-world                 # also load GitHub's 13 MB spec, as CI does
+make ui-test                    # the app's UI smoke tests
 make run SPEC=path/to/spec.yaml # build the app and open a spec with it
 make release                    # a Release build, signed ad hoc, at build/Swanger.zip
 ```
 
 Or open `App/Swanger.xcodeproj` in Xcode (`make xcode`) and run the **Swanger** scheme.
+
+`RealWorldSpecTests` loads the Swagger Petstores (kept in `Tests/SwangerCoreTests/Fixtures/real-world/`)
+and GitHub's REST API spec, which `scripts/fetch-real-world-specs.sh` downloads at a pinned commit
+into `.build/real-world-specs/`. Without it, that one test is skipped locally. CI sets
+`REQUIRE_REAL_WORLD_SPECS`, so there it fails instead.
+
+The UI smoke tests (`App/SwangerUITests`) drive the app, so macOS has to allow automation first. Either
+approve the prompt the first time they run, or enable it once with
+`sudo automationmodetool enable-automationmode-without-authentication`. While they run, leave the
+mouse and keyboard alone.
 
 The app is signed to run locally (ad hoc) and isn't sandboxed, so it can read files a spec refers to next to
 it. Debug builds have the hardened runtime switched off by Xcode so the debugger can attach; Release builds
@@ -52,8 +64,9 @@ make lint                       # xcrun swift-format lint --strict …, as CI ru
 
 `.github/workflows/ci.yml` runs on every pull request and every push to `main`:
 
-- **test**: `swift-format lint --strict`, then `swift test --parallel`.
-- **build**: builds the app scheme for testing and runs its tests (once the UI smoke tests exist), then makes
+- **test**: `swift-format lint --strict`, downloads GitHub's spec for `RealWorldSpecTests`, then
+  `swift test --parallel`.
+- **build**: builds the app scheme for testing and runs its UI smoke tests, then makes
   an ad hoc signed Release build and attaches it to the run as `Swanger-<short sha>.zip` for 14 days.
 
 When a job fails, its test results (`.xcresult` bundles, or xUnit XML from `swift test`) are attached too. A

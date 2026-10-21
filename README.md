@@ -25,6 +25,11 @@ It's a native SwiftUI app for macOS 15 Sequoia and later.
   <img alt="The overview: a card for each request schema, and a grid of which shared fragments each schema uses" src="docs/screenshots/overview-light.png">
 </picture>
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/try-it-dark.png">
+  <img alt="Try it: a refund payload in the editor, with three issues listed under it: it mustn't have amount, a rejected refund needs a reason, and paymentId must be a UUID" src="docs/screenshots/try-it-light.png">
+</picture>
+
 > Searching for "swanger"? Search engines tend to correct it to "swagger". Look for "Swanger OpenAPI schema
 > viewer for macOS".
 

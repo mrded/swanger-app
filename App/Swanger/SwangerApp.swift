@@ -12,6 +12,17 @@ struct SwangerApp: App {
           description: Text("Swanger opens OpenAPI files saved on disk."))
       }
     }
-    .commands { SpecCommands() }
+    .commands {
+      SpecCommands()
+      AboutCommands()
+    }
+
+    Window("About Swanger", id: AboutView.windowID) {
+      AboutView()
+    }
+    .windowResizability(.contentSize)
+    .windowStyle(.hiddenTitleBar)
+    .restorationBehavior(.disabled)
+    .commandsRemoved()
   }
 }
