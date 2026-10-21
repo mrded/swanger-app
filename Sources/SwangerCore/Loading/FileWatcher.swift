@@ -9,21 +9,38 @@ import Foundation
 /// size, modification date or identity has really changed, so other files coming and going in the
 /// same folders don't count.
 public final class FileWatcher: @unchecked Sendable {
-  /// What's known about a file, to tell real changes from folder noise.
+  /// What's known about a file, to tell real changes from folder noise. For a symbolic link, it
+  /// covers both the link and the file it points to.
   private struct Fingerprint: Equatable {
-    var fileNumber: Int?
-    var size: Int?
-    var modified: Date?
+    struct Item: Equatable {
+      var fileNumber: Int?
+      var size: Int?
+      var modified: Date?
+
+      /// Reads the item itself, not what it points to.
+      init(_ path: String) {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        fileNumber = (attributes?[.systemFileNumber] as? NSNumber)?.intValue
+        size = (attributes?[.size] as? NSNumber)?.intValue
+        modified = attributes?[.modificationDate] as? Date
+      }
+
+      init() {}
+    }
+
+    var link: Item?
+    var file: Item
 
     /// Nothing known, so any file differs from it.
-    init() {}
+    init() { file = Item() }
 
     init(_ url: URL) {
-      let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-      fileNumber = (attributes?[.systemFileNumber] as? NSNumber)?.intValue
-      size = (attributes?[.size] as? NSNumber)?.intValue
-      modified = attributes?[.modificationDate] as? Date
+      let target = url.resolvingSymlinksInPath()
+      link = target == url ? nil : Item(url.path)
+      file = Item(target.path)
     }
+
+    var modified: Date? { [link?.modified, file.modified].compactMap(\.self).max() }
   }
 
   public let urls: [URL]
@@ -90,11 +107,14 @@ public final class FileWatcher: @unchecked Sendable {
   private static let queueKey = DispatchSpecificKey<ObjectIdentifier>()
 
   /// Opens a source for each file and folder that exists now. A file whose folder is missing is
-  /// watched through the nearest folder above it that exists, moving down as folders appear.
+  /// watched through the nearest folder above it that exists, moving down as folders appear. A
+  /// symbolic link is watched along with the file it points to now, and that file's folder.
   private func arm() {
-    let folders = urls.map { Self.nearestExistingFolder(above: $0) }
+    let targets = urls.map { $0.resolvingSymlinksInPath() }.filter { !urls.contains($0) }
+    let files = urls + targets
+    let folders = files.map { Self.nearestExistingFolder(above: $0) }
     var watched: [URL] = []
-    for url in urls + folders where !watched.contains(url) {
+    for url in files + folders where !watched.contains(url) {
       watched.append(url)
       let descriptor = open(url.path, O_EVTONLY)
       guard descriptor >= 0 else { continue }

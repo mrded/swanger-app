@@ -107,6 +107,26 @@ import Testing
     #expect(changes.count == 1)
   }
 
+  @Test func noticesChangesToASymlinksTarget() async throws {
+    let elsewhere = folder.appending(path: "elsewhere")
+    try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: false)
+    let target = elsewhere.appending(path: "Pet.yaml")
+    try "Pet: {}\n".write(to: target, atomically: false, encoding: .utf8)
+    let link = folder.appending(path: "pet-link.yaml")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+    let changes = Changes()
+    let watcher = FileWatcher(urls: [spec, link], latency: .milliseconds(50)) { changes.record() }
+    defer { watcher.cancel() }
+
+    try append("Owner: {}\n", to: target)
+    #expect(await changes.wait(for: 1))
+
+    // An atomic save replaces the target in its own folder, which only a watch there sees.
+    try "Pet: {type: object}\n".write(to: target, atomically: true, encoding: .utf8)
+    #expect(await changes.wait(for: 2))
+  }
+
   @Test func ignoresOtherFilesInTheFolder() async throws {
     let changes = Changes()
     let watcher = FileWatcher(urls: [spec], latency: .milliseconds(50)) { changes.record() }
