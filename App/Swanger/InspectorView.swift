@@ -154,11 +154,11 @@ private struct FieldDetails: View {
     if node.defaultValue != nil || !node.examples.isEmpty {
       Section("Values") {
         if let value = node.defaultValue {
-          LabeledContent("Default") { Text(value.literal).monospaced() }
+          LabeledContent("Default") { Text(value.shown).monospaced() }
         }
         ForEach(Array(node.examples.enumerated()), id: \.offset) { _, example in
           LabeledContent("Example") {
-            Text(example.literal).monospaced().lineLimit(3).textSelection(.enabled)
+            Text(example.shown).monospaced().lineLimit(3).textSelection(.enabled)
           }
         }
       }
@@ -178,7 +178,7 @@ private struct ScalarSection: View {
         }
         if let values = scalar.allowedValues {
           LabeledContent("Allowed") {
-            Text(values.map(\.literal).joined(separator: ", ")).monospaced()
+            Text(values.map(\.shown).joined(separator: ", ")).monospaced()
               .textSelection(.enabled)
           }
         }
@@ -205,7 +205,7 @@ private struct ItemsSection: View {
         }
         if let values = scalar.allowedValues {
           LabeledContent("Allowed") {
-            Text(values.map(\.literal).joined(separator: ", ")).monospaced()
+            Text(values.map(\.shown).joined(separator: ", ")).monospaced()
           }
         }
       }
@@ -320,6 +320,17 @@ private struct FragmentLink: View {
       .foregroundStyle(Color.swangerViolet)
     } else {
       Text(fragment.name)
+    }
+  }
+}
+
+extension JSONValue {
+  /// The value as the inspector shows it: ``literal`` without the backticks around arrays and
+  /// objects, which are only for rule wording.
+  fileprivate var shown: String {
+    switch self {
+    case .array, .object: description
+    default: literal
     }
   }
 }

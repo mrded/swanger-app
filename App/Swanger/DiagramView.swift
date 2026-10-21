@@ -32,38 +32,40 @@ struct DiagramView: View {
   private static let scales: ClosedRange<CGFloat> = 0.2...3
 
   var body: some View {
-    ZStack(alignment: .topLeading) {
-      Color.clear
-        .contentShape(Rectangle())
-        .onTapGesture(perform: clearSelection)
-      content
-        .fixedSize()
-        .onGeometryChange(for: CGSize.self, of: \.size) { contentSize = $0 }
-        .scaleEffect(viewport.scale, anchor: .topLeading)
-        .offset(viewport.offset)
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .clipped()
-    .background(DiagramBackground())
-    .onGeometryChange(for: CGSize.self, of: \.size) { viewSize = $0 }
-    .gesture(pan)
-    .simultaneousGesture(pinch)
-    .onContinuousHover { phase in
-      if case .active(let location) = phase { pointer = location } else { pointer = nil }
-    }
-    .overlay(alignment: .bottomTrailing) { zoomControls }
-    .onAppear {
-      viewport = savedViewport ?? .initial
-      viewportChanged(viewport)
-      installScrollMonitor()
-    }
-    .onDisappear(perform: removeScrollMonitor)
-    .onChange(of: restoreCount) {
-      viewport = savedViewport ?? .initial
-    }
-    .onChange(of: viewport) { _, viewport in viewportChanged(viewport) }
-    .onChange(of: cardFrames) { revealRow() }
-    .onChange(of: reveal) { revealRow() }
+    Color.clear
+      .contentShape(Rectangle())
+      .onTapGesture(perform: clearSelection)
+      // An overlay, so the cards' size doesn't become the diagram's minimum size: that squeezed
+      // the inspector, and resizing the window then made AppKit throw.
+      .overlay(alignment: .topLeading) {
+        content
+          .fixedSize()
+          .onGeometryChange(for: CGSize.self, of: \.size) { contentSize = $0 }
+          .scaleEffect(viewport.scale, anchor: .topLeading)
+          .offset(viewport.offset)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .clipped()
+      .background(DiagramBackground())
+      .onGeometryChange(for: CGSize.self, of: \.size) { viewSize = $0 }
+      .gesture(pan)
+      .simultaneousGesture(pinch)
+      .onContinuousHover { phase in
+        if case .active(let location) = phase { pointer = location } else { pointer = nil }
+      }
+      .overlay(alignment: .bottomTrailing) { zoomControls }
+      .onAppear {
+        viewport = savedViewport ?? .initial
+        viewportChanged(viewport)
+        installScrollMonitor()
+      }
+      .onDisappear(perform: removeScrollMonitor)
+      .onChange(of: restoreCount) {
+        viewport = savedViewport ?? .initial
+      }
+      .onChange(of: viewport) { _, viewport in viewportChanged(viewport) }
+      .onChange(of: cardFrames) { revealRow() }
+      .onChange(of: reveal) { revealRow() }
   }
 
   private var content: some View {

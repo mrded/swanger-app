@@ -15,7 +15,7 @@ struct SpecWindow: View {
 
   var body: some View {
     content
-      .frame(minWidth: 800, minHeight: 500)
+      .frame(minHeight: 500)
       .task { store.start() }
       // The store outlives a rename or move, so it's told where the file went.
       .onChange(of: url) { _, url in store.fileMoved(to: url) }
