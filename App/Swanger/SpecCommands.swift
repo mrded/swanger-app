@@ -16,6 +16,15 @@ struct SpecCommands: Commands {
         .keyboardShortcut("f")
         .disabled(store?.spec == nil)
     }
+    CommandGroup(before: .sidebar) {
+      Button("Diagram") { store?.show(.diagram) }
+        .keyboardShortcut("d", modifiers: [.command, .option])
+        .disabled(store?.spec == nil)
+      Button("Try It") { store?.show(.tryIt) }
+        .keyboardShortcut("t", modifiers: [.command, .option])
+        .disabled(store?.spec == nil)
+      Divider()
+    }
     CommandMenu("Go") {
       Button("Back") { store?.goBack() }
         .keyboardShortcut("[")

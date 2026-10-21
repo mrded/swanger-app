@@ -1,4 +1,6 @@
+import OrderedJSON
 import SwangerCore
+import SwangerValidation
 import SwiftUI
 
 /// The page the window is on: the overview, or a schema's diagram.
@@ -14,7 +16,12 @@ struct SpecDetail: View {
       if let root = spec.root(id) {
         SchemaPage(
           title: root.name, node: root.node,
-          subtitle: root.operations.map(\.description).joined(separator: " · "), store: store
+          subtitle: root.operations.map(\.description).joined(separator: " · "),
+          tryIt: .root(id),
+          examples: Self.examples(
+            root.examples.map(\.value), named: ExampleNames.names(for: root.examples, of: root.node)
+          ),
+          skeleton: Self.text(Skeleton.payload(for: root.node, in: spec)), store: store
         )
         .id(store.view.page)
       } else {
@@ -23,7 +30,12 @@ struct SpecDetail: View {
     case .fragment(let id):
       if let fragment = spec.fragment(at: id) {
         SchemaPage(
-          title: fragment.name, node: fragment.node, subtitle: usedIn(fragment), store: store
+          title: fragment.name, node: fragment.node, subtitle: usedIn(fragment),
+          tryIt: .fragment(id),
+          examples: Self.examples(
+            fragment.node.examples,
+            named: ExampleNames.names(for: fragment.node.examples, of: fragment.node)),
+          skeleton: Self.text(Skeleton.payload(for: fragment.node, in: spec)), store: store
         )
         .id(store.view.page)
       } else {
@@ -36,6 +48,16 @@ struct SpecDetail: View {
   private func usedIn(_ fragment: Fragment) -> String {
     let count = spec.fragmentIndex.roots(using: fragment.reference).count
     return "Shared fragment, used by \(count) schema\(count == 1 ? "" : "s")"
+  }
+
+  private static func examples(_ values: [JSONValue], named names: [String]) -> [TryItExample] {
+    zip(values, names).enumerated().map { index, example in
+      TryItExample(id: index, name: example.1, text: text(example.0))
+    }
+  }
+
+  private static func text(_ value: JSONValue) -> String {
+    value.prettyText
   }
 
   private var missing: some View {

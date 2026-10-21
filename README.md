@@ -61,8 +61,9 @@ Artifacts are kept for 14 days.
 You need Xcode 27 or later.
 
 ```sh
-swift test                      # core and validation libraries
-open App/Swanger.xcodeproj      # the app; run the Swanger scheme
+make test                       # core and validation libraries
+make run                        # build the app and open a sample spec (SPEC=path/to/spec.yaml)
+make                            # every command
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more.

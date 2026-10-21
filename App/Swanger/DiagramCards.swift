@@ -62,6 +62,16 @@ enum DiagramCards {
     return cards
   }
 
+  /// `path`, or the nearest path above it that's a row when the cards on the way are open, such
+  /// as `tags` for `tags[]`: an array that only holds items has no card, and its items no row.
+  /// Empty when no row will do.
+  static func nearestRow(to path: FieldPath, in node: SchemaNode) -> FieldPath {
+    let rows = Set(
+      cards(of: node, title: "", from: FieldPath(), open: Set(path.prefixes))
+        .flatMap { $0.rows.compactMap(\.path) })
+    return path.prefixes.reversed().first(where: rows.contains) ?? FieldPath()
+  }
+
   /// The card a row's value opens, skipping arrays that only hold items: a row holding
   /// `array of Line` opens the `Line` card.
   static func cardPath(for node: SchemaNode, at path: FieldPath) -> (FieldPath, SchemaNode)? {

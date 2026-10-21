@@ -36,6 +36,25 @@ struct DiagramState: Equatable {
   var highlight: FieldPath?
 }
 
+extension DiagramState {
+  /// Selects and marks the row at `path`, with every card on the way to it open.
+  mutating func show(_ path: FieldPath) {
+    openRows.formUnion(path.prefixes)
+    // A card shown on its own holds the rows strictly inside it; its own row is in its parent.
+    if let focus, path == focus || !path.components.starts(with: focus.components) {
+      self.focus = nil
+    }
+    selection = path
+    highlight = path
+  }
+}
+
+/// What a schema page shows.
+enum DetailMode: Hashable {
+  case diagram
+  case tryIt
+}
+
 /// One entry in the window's history.
 struct ViewState: Equatable {
   var page: Page

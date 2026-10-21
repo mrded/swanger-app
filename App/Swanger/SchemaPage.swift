@@ -7,12 +7,33 @@ struct SchemaPage: View {
   let node: SchemaNode
   /// Under the title: the operations using a root, or where a fragment is used.
   let subtitle: String
+  let tryIt: TryItSchema
+  /// Try it's examples, and what it starts from without them.
+  let examples: [TryItExample]
+  let skeleton: String
   let store: SpecStore
 
   var body: some View {
+    Group {
+      switch store.mode {
+      case .diagram:
+        diagram
+      case .tryIt:
+        TryItView(
+          schema: tryIt, node: node, examples: examples, skeleton: skeleton, store: store)
+      }
+    }
+    .safeAreaInset(edge: .top, spacing: 0) { header(focus: store.mode == .diagram ? focus : nil) }
+  }
+
+  /// The card shown on its own. A reload can remove it; then the whole schema is shown.
+  private var focus: FieldPath? {
+    store.view.diagram.focus.flatMap { node.node(at: $0) != nil ? $0 : nil }
+  }
+
+  @ViewBuilder private var diagram: some View {
     let state = store.view.diagram
-    // A reload can remove the card shown on its own; then the whole schema is shown.
-    let focus = state.focus.flatMap { node.node(at: $0) != nil ? $0 : nil }
+    let focus = focus
     let cards = DiagramCards.cards(
       of: node, title: focus.map(title(of:)) ?? title, from: focus ?? FieldPath(),
       open: state.openRows)
@@ -23,7 +44,6 @@ struct SchemaPage: View {
       viewportChanged: { store.liveViewport = $0 },
       selectRow: select, openOnItsOwn: openOnItsOwn, clearSelection: { store.select(nil) }
     )
-    .safeAreaInset(edge: .top, spacing: 0) { header(focus: focus) }
   }
 
   private func header(focus: FieldPath?) -> some View {
