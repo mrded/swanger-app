@@ -12,5 +12,6 @@ struct SwangerApp: App {
           description: Text("Swanger opens OpenAPI files saved on disk."))
       }
     }
+    .commands { SpecCommands() }
   }
 }

@@ -1,47 +1,67 @@
 import SwangerCore
 import SwiftUI
 
-/// Overview, request schemas, response schemas and shared fragments, filtered by the search field.
+/// Overview, request schemas, response schemas and shared fragments; or, while searching, the
+/// roots, fragments and fields that match, best first.
 struct SpecSidebar: View {
   let spec: Spec
   @Bindable var store: SpecStore
+  @FocusState private var isSearchFocused: Bool
 
   var body: some View {
-    List(selection: $store.selection) {
+    List(selection: selection) {
       if query.isEmpty {
-        Label("Overview", systemImage: "square.grid.2x2").tag(SidebarItem.overview)
-      }
-      rootSection("Request schemas", roots: spec.requestSchemas, systemImage: "arrow.up.doc")
-      rootSection("Response schemas", roots: spec.responseSchemas, systemImage: "arrow.down.doc")
-      let fragments = spec.fragments.filter { matches($0.name) }
-      if !fragments.isEmpty {
-        Section("Shared fragments") {
-          ForEach(fragments) { fragment in
-            FragmentRow(fragment: fragment, spec: spec).tag(SidebarItem.fragment(fragment.id))
+        Label("Overview", systemImage: "square.grid.2x2").tag(SidebarItem.page(.overview))
+        rootSection("Request schemas", roots: spec.requestSchemas)
+        rootSection("Response schemas", roots: spec.responseSchemas)
+        if !spec.fragments.isEmpty {
+          Section("Shared fragments") {
+            ForEach(spec.fragments) { fragment in
+              FragmentRow(fragment: fragment, spec: spec)
+                .tag(SidebarItem.page(.fragment(fragment.id)))
+            }
           }
+        }
+      } else {
+        ForEach(results, id: \.self) { result in
+          SearchResultRow(result: result, spec: spec).tag(item(for: result.target))
         }
       }
     }
-    .searchable(text: $store.searchText, placement: .sidebar, prompt: "Filter")
+    .searchable(text: $store.searchText, placement: .sidebar, prompt: "Fields, schemas, fragments")
+    .searchFocused($isSearchFocused)
+    .onChange(of: store.findCount) { isSearchFocused = true }
     .overlay {
-      if !query.isEmpty && !hasMatches {
+      if !query.isEmpty && results.isEmpty {
         ContentUnavailableView.search(text: query)
       }
     }
   }
 
-  @ViewBuilder
-  private func rootSection(
-    _ title: String, roots: [RootSchema], systemImage: String
-  ) -> some View {
-    let roots = roots.filter { matches($0.name) }
-    if !roots.isEmpty {
-      Section(title) {
-        ForEach(roots) { root in
-          Label(root.name, systemImage: systemImage)
-            .help(root.operations.map(\.description).joined(separator: "\n"))
-            .tag(SidebarItem.root(root.id))
-        }
+  /// The current page, or the field found by searching that's showing.
+  private var selection: Binding<SidebarItem?> {
+    Binding {
+      if !query.isEmpty, case .root(let id) = store.view.page,
+        let highlight = store.view.diagram.highlight
+      {
+        return .field(id, highlight)
+      }
+      return .page(store.view.page)
+    } set: { item in
+      switch item {
+      case .page(let page): store.show(page)
+      case .field(let root, let path): store.reveal(path, in: root)
+      case nil: break
+      }
+    }
+  }
+
+  private func rootSection(_ title: String, roots: [RootSchema]) -> some View {
+    Section(title) {
+      ForEach(roots) { root in
+        Label(root.name, systemImage: root.direction.systemImage)
+          .help(root.operations.map(\.description).joined(separator: "\n"))
+          .tag(SidebarItem.page(.root(root.id)))
       }
     }
   }
@@ -50,12 +70,57 @@ struct SpecSidebar: View {
     store.searchText.trimmingCharacters(in: .whitespaces)
   }
 
-  private func matches(_ name: String) -> Bool {
-    query.isEmpty || name.localizedStandardContains(query)
+  private var results: [SearchIndex.Result] {
+    store.searchIndex?.search(query) ?? []
   }
 
-  private var hasMatches: Bool {
-    spec.roots.contains { matches($0.name) } || spec.fragments.contains { matches($0.name) }
+  private func item(for target: SearchIndex.Result.Target) -> SidebarItem {
+    switch target {
+    case .root(let id): .page(.root(id))
+    case .fragment(let fragment): .page(.fragment(fragment.id))
+    case .field(let root, let path): .field(root, path)
+    }
+  }
+}
+
+private struct SearchResultRow: View {
+  let result: SearchIndex.Result
+  let spec: Spec
+
+  var body: some View {
+    Label {
+      VStack(alignment: .leading, spacing: 1) {
+        Text(result.name).lineLimit(1)
+        if let detail = result.detail {
+          Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            .truncationMode(.head)
+        }
+      }
+    } icon: {
+      Image(systemName: systemImage)
+        .foregroundStyle(isFragment ? Color.swangerViolet : .secondary)
+    }
+  }
+
+  private var isFragment: Bool {
+    if case .fragment = result.target { true } else { false }
+  }
+
+  private var systemImage: String {
+    switch result.target {
+    case .root(let id): id.direction.systemImage
+    case .fragment: "puzzlepiece"
+    case .field: "text.alignleft"
+    }
+  }
+}
+
+extension RootSchema.Direction {
+  var systemImage: String {
+    switch self {
+    case .request: "arrow.up.doc"
+    case .response: "arrow.down.doc"
+    }
   }
 }
 
@@ -97,12 +162,8 @@ private struct UsageDots: View {
   var body: some View {
     HStack(spacing: 3) {
       ForEach(Array(uses.prefix(maximum).enumerated()), id: \.offset) { _, use in
-        switch use {
-        case .direct: Circle().fill(.purple)
-        case .nested: Circle().strokeBorder(.purple, lineWidth: 1.2)
-        }
+        UsageDot(use: use, size: 7)
       }
-      .frame(width: 7, height: 7)
       if uses.count > maximum {
         Text("+\(uses.count - maximum)").font(.caption2).foregroundStyle(.secondary)
       }

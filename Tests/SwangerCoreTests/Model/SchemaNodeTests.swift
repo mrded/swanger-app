@@ -544,6 +544,19 @@ import Testing
     #expect(petOnItsOwn.object?[field: "owner"]?.node.object != nil)
   }
 
+  @Test func variantsWithTheSameNameAreFoundByPosition() throws {
+    let node = try node(
+      """
+      oneOf:
+        - {type: string, format: email}
+        - {type: string, format: uuid}
+      """)
+
+    #expect(node.variants.map(\.name) == ["string", "string"])
+    #expect(node.node(at: FieldPath([.variant("string", index: 1)]))?.scalar?.format == "uuid")
+    #expect(node.node(at: FieldPath([.variant("integer", index: 1)])) == nil)
+  }
+
   // MARK: - Helpers
 
   /// The node for one schema, written as a component named `S`.

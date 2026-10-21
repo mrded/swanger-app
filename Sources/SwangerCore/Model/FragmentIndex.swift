@@ -1,14 +1,17 @@
 import OrderedCollections
 
-/// The way from a root to a value inside it: `customer.address`, `lines[].sku`,
+/// The way from a root to a value inside it: `customer.address`, `lines[].sku`, `point[0]`,
 /// `payment(Card).cardNumber`, `metadata.*` or `extensions./^x-/`.
 public struct FieldPath: Hashable, Sendable, CustomStringConvertible {
   public enum Component: Hashable, Sendable {
     case field(String)
-    /// An item of an array.
+    /// An item of an array, from `items`.
     case items
-    /// One variant of a `oneOf` or `anyOf`, by name.
-    case variant(String)
+    /// The item at one position of an array, from `prefixItems`.
+    case prefixItem(Int)
+    /// One variant of a `oneOf` or `anyOf`: its name, and its position among the node's
+    /// variants (``SchemaNode/variants``), since two variants can share a name.
+    case variant(String, index: Int)
     /// The value of any field not listed, from `additionalProperties`.
     case otherFields
     /// The value of a field whose name matches a `patternProperties` pattern.
@@ -38,7 +41,8 @@ public struct FieldPath: Hashable, Sendable, CustomStringConvertible {
       switch component {
       case .field(let name): text += text.isEmpty ? name : ".\(name)"
       case .items: text += "[]"
-      case .variant(let name): text += "(\(name))"
+      case .prefixItem(let index): text += "[\(index)]"
+      case .variant(let name, _): text += "(\(name))"
       case .otherFields: text += text.isEmpty ? "*" : ".*"
       case .patternField(let pattern): text += text.isEmpty ? "/\(pattern)/" : "./\(pattern)/"
       }

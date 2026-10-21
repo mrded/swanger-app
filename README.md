@@ -13,8 +13,17 @@ Swanger opens an OpenAPI 3.0 or 3.1 file (JSON or YAML) and shows the resources 
 Swanger is **not an API explorer**. There's no endpoint list, no parameters, servers or auth, and it never
 sends requests. It reads `paths` only to find which schemas are request and response bodies.
 
-It's a native SwiftUI app for macOS 15 Sequoia and later. Screenshots will be added once there's something to
-show.
+It's a native SwiftUI app for macOS 15 Sequoia and later.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/diagram-dark.png">
+  <img alt="A request schema's diagram: the NewOrder card with its customer, lines and payment cards open, and the inspector showing the sku field's pattern" src="docs/screenshots/diagram-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png">
+  <img alt="The overview: a card for each request schema, and a grid of which shared fragments each schema uses" src="docs/screenshots/overview-light.png">
+</picture>
 
 > Searching for "swanger"? Search engines tend to correct it to "swagger". Look for "Swanger OpenAPI schema
 > viewer for macOS".

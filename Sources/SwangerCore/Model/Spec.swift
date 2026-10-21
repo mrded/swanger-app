@@ -289,7 +289,7 @@ extension SchemaNode {
   /// Visits this node and every node inside it, depth first, with the path to it and the nearest
   /// fragment it's inside. The node it starts from doesn't count as one, so a root that is a
   /// fragment uses what's in it directly. Stops at recursive nodes, so it always ends.
-  func walk(
+  public func walk(
     path: FieldPath = FieldPath(),
     inside fragment: FragmentRef? = nil,
     _ visit: (SchemaNode, FieldPath, FragmentRef?) -> Void
@@ -311,20 +311,16 @@ extension SchemaNode {
         other.walk(path: path.appending(.otherFields), inside: inner, visit)
       }
     case .array(let array):
-      for item in array.prefixItems + (array.items.map { [$0] } ?? []) {
-        item.walk(path: path.appending(.items), inside: inner, visit)
+      for (index, item) in array.prefixItems.enumerated() {
+        item.walk(path: path.appending(.prefixItem(index)), inside: inner, visit)
       }
-    case .choice(let choice):
-      for variant in choice.variants {
-        variant.node.walk(path: path.appending(.variant(variant.name)), inside: inner, visit)
-      }
-    case .scalar, .recursive, .unresolved, .never:
+      array.items?.walk(path: path.appending(.items), inside: inner, visit)
+    case .scalar, .recursive, .unresolved, .never, .choice:
       break
     }
-    for choice in choices {
-      for variant in choice.variants {
-        variant.node.walk(path: path.appending(.variant(variant.name)), inside: inner, visit)
-      }
+    for (index, variant) in variants.enumerated() {
+      variant.node.walk(
+        path: path.appending(.variant(variant.name, index: index)), inside: inner, visit)
     }
   }
 }

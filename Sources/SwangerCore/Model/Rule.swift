@@ -93,3 +93,8 @@ package enum Wording {
     return described.map { "must be \($0)" } ?? "must be in the \(code(format)) format"
   }
 }
+
+extension JSONValue {
+  /// The value as JSON: `"Rejected"`, `5`, `true`, `null`.
+  public var literal: String { Wording.literal(self) }
+}
