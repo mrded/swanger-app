@@ -13,7 +13,8 @@ enum SidebarItem: Hashable {
 /// changes, and keeps the window's selection.
 @MainActor @Observable
 final class SpecStore {
-  let url: URL
+  /// Where the spec is now. It changes when the document is renamed or moved.
+  private(set) var url: URL
   /// The latest spec that loaded. A failed reload keeps the previous one.
   private(set) var spec: Spec?
   /// Why the latest load failed. With a ``spec``, it's shown as a banner over the old model.
@@ -34,6 +35,13 @@ final class SpecStore {
     if spec == nil && loadTask == nil { reload() }
   }
 
+  /// Follows the document to its new place, and loads it from there.
+  func fileMoved(to url: URL) {
+    guard url != self.url else { return }
+    self.url = url
+    reload()
+  }
+
   func stop() {
     loadTask?.cancel()
     loadTask = nil
@@ -45,16 +53,17 @@ final class SpecStore {
     loadTask?.cancel()
     isLoading = true
     let url = url
+    let started = Date()
     loadTask = Task {
       let result = await Task.detached(priority: .userInitiated) {
         Result { () throws(LoadError) in try Spec.load(url) }
       }.value
       guard !Task.isCancelled else { return }
-      apply(result)
+      apply(result, loadedAt: started)
     }
   }
 
-  private func apply(_ result: Result<Spec, LoadError>) {
+  private func apply(_ result: Result<Spec, LoadError>, loadedAt started: Date) {
     isLoading = false
     switch result {
     case .success(let spec):
@@ -64,16 +73,17 @@ final class SpecStore {
     case .failure(let error):
       loadError = error
     }
-    watch(spec?.referencedFiles ?? [])
+    watch(spec?.referencedFiles ?? [], readSince: started)
   }
 
-  /// Watches the spec and `files`, replacing the watcher only when the list changes.
-  private func watch(_ files: [URL]) {
+  /// Watches the spec and `files`, replacing the watcher only when the list changes. A new watcher
+  /// reloads straight away if a file changed after `started`, while it was being loaded unwatched.
+  private func watch(_ files: [URL], readSince started: Date) {
     let urls = [url] + files
     let standardized = Set(urls.map(\.standardizedFileURL))
     if let watcher, Set(watcher.urls) == standardized { return }
     watcher?.cancel()
-    watcher = FileWatcher(urls: urls) { [weak self] in
+    watcher = FileWatcher(urls: urls, changedSince: started) { [weak self] in
       Task { @MainActor in self?.reload() }
     }
   }

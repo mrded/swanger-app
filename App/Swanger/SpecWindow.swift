@@ -4,10 +4,12 @@ import SwiftUI
 /// A document window: the sidebar, the selected page and the inspector, or why the spec didn't
 /// load.
 struct SpecWindow: View {
+  let url: URL
   @State private var store: SpecStore
   @State private var showsInspector = false
 
   init(url: URL) {
+    self.url = url
     _store = State(initialValue: SpecStore(url: url))
   }
 
@@ -15,6 +17,8 @@ struct SpecWindow: View {
     content
       .frame(minWidth: 800, minHeight: 500)
       .task { store.start() }
+      // The store outlives a rename or move, so it's told where the file went.
+      .onChange(of: url) { _, url in store.fileMoved(to: url) }
       .onDisappear { store.stop() }
   }
 

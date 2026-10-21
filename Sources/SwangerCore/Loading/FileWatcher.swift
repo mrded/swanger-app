@@ -15,6 +15,9 @@ public final class FileWatcher: @unchecked Sendable {
     var size: Int?
     var modified: Date?
 
+    /// Nothing known, so any file differs from it.
+    init() {}
+
     init(_ url: URL) {
       let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
       fileNumber = (attributes?[.systemFileNumber] as? NSNumber)?.intValue
@@ -35,9 +38,13 @@ public final class FileWatcher: @unchecked Sendable {
 
   /// Starts watching `urls`. Files that don't exist yet are watched for being created.
   ///
-  /// - Parameter onChange: Called on a background queue.
+  /// - Parameters:
+  ///   - changedSince: When the files were read, if before now. A file modified since then calls
+  ///     back straight away, so an edit made while they were being loaded isn't missed.
+  ///   - onChange: Called on a background queue.
   public init(
     urls: [URL],
+    changedSince: Date? = nil,
     latency: DispatchTimeInterval = .milliseconds(300),
     onChange: @escaping @Sendable () -> Void
   ) {
@@ -47,7 +54,17 @@ public final class FileWatcher: @unchecked Sendable {
     self.latency = latency
     self.onChange = onChange
     fingerprints = unique.map(Fingerprint.init)
-    queue.sync { arm() }
+    queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
+    queue.sync {
+      arm()
+      if let changedSince,
+        fingerprints.contains(where: { $0.modified ?? .distantPast >= changedSince })
+      {
+        // Settling compares with the fingerprints, so forget the ones taken after the change.
+        fingerprints = unique.map { _ in Fingerprint() }
+        eventArrived()
+      }
+    }
   }
 
   deinit {
@@ -55,18 +72,27 @@ public final class FileWatcher: @unchecked Sendable {
     pending?.cancel()
   }
 
-  /// Stops watching. The callback isn't called again.
+  /// Stops watching. The callback isn't called again. It can be called from the callback.
   public func cancel() {
-    queue.sync {
-      isCancelled = true
-      pending?.cancel()
-      disarm()
+    let stop = {
+      self.isCancelled = true
+      self.pending?.cancel()
+      self.disarm()
+    }
+    if DispatchQueue.getSpecific(key: Self.queueKey) == ObjectIdentifier(self) {
+      stop()
+    } else {
+      queue.sync(execute: stop)
     }
   }
 
-  /// Opens a source for each file and folder that exists now.
+  /// Marks ``queue``, so ``cancel()`` can tell when it's already running on it.
+  private static let queueKey = DispatchSpecificKey<ObjectIdentifier>()
+
+  /// Opens a source for each file and folder that exists now. A file whose folder is missing is
+  /// watched through the nearest folder above it that exists, moving down as folders appear.
   private func arm() {
-    let folders = urls.map { $0.deletingLastPathComponent() }
+    let folders = urls.map { Self.nearestExistingFolder(above: $0) }
     var watched: [URL] = []
     for url in urls + folders where !watched.contains(url) {
       watched.append(url)
@@ -81,6 +107,17 @@ public final class FileWatcher: @unchecked Sendable {
       source.resume()
       sources.append(source)
     }
+  }
+
+  private static func nearestExistingFolder(above url: URL) -> URL {
+    var folder = url.deletingLastPathComponent()
+    var isFolder: ObjCBool = false
+    while !(FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder)
+      && isFolder.boolValue) && folder.path != "/"
+    {
+      folder = folder.deletingLastPathComponent()
+    }
+    return folder
   }
 
   private func disarm() {

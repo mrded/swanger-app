@@ -71,12 +71,77 @@ import Testing
     #expect(await changes.wait(for: 1))
   }
 
+  @Test func noticesAFileCreatedInAMissingFolder() async throws {
+    let schemas = folder.appending(path: "schemas/v1")
+    let missing = schemas.appending(path: "Pet.yaml")
+    let changes = Changes()
+    let watcher = FileWatcher(urls: [spec, missing], latency: .milliseconds(50)) {
+      changes.record()
+    }
+    defer { watcher.cancel() }
+
+    // One folder at a time, letting the watcher move down to each before the next arrives.
+    for path in ["schemas", "schemas/v1"] {
+      try FileManager.default.createDirectory(
+        at: folder.appending(path: path), withIntermediateDirectories: false)
+      try await Task.sleep(for: .milliseconds(300))
+    }
+    try "Pet: {}\n".write(to: missing, atomically: false, encoding: .utf8)
+
+    #expect(await changes.wait(for: 1))
+  }
+
+  @Test func canBeCancelledFromItsCallback() async throws {
+    let changes = Changes()
+    let box = WatcherBox()
+    box.watcher = FileWatcher(urls: [spec], latency: .milliseconds(50)) {
+      box.watcher?.cancel()
+      changes.record()
+    }
+
+    try append("info: {}\n", to: spec)
+    #expect(await changes.wait(for: 1))
+
+    try append("servers: []\n", to: spec)
+    try await Task.sleep(for: .milliseconds(400))
+    #expect(changes.count == 1)
+  }
+
   @Test func ignoresOtherFilesInTheFolder() async throws {
     let changes = Changes()
     let watcher = FileWatcher(urls: [spec], latency: .milliseconds(50)) { changes.record() }
     defer { watcher.cancel() }
 
     try "notes\n".write(to: folder.appending(path: "notes.txt"), atomically: true, encoding: .utf8)
+
+    try await Task.sleep(for: .milliseconds(400))
+    #expect(changes.count == 0)
+  }
+
+  @Test func callsBackForAChangeMadeBeforeItStarted() async throws {
+    // The file is read, then edited before the watcher exists, as when a load is still running.
+    let readAt = Date()
+    try await Task.sleep(for: .milliseconds(20))
+    try append("info: {}\n", to: common)
+
+    let changes = Changes()
+    let watcher = FileWatcher(
+      urls: [spec, common], changedSince: readAt, latency: .milliseconds(50)
+    ) { changes.record() }
+    defer { watcher.cancel() }
+
+    #expect(await changes.wait(for: 1))
+  }
+
+  @Test func doesNotCallBackForFilesUnchangedSinceTheyWereRead() async throws {
+    try await Task.sleep(for: .milliseconds(20))
+    let changes = Changes()
+    let watcher = FileWatcher(
+      urls: [spec, common], changedSince: Date(), latency: .milliseconds(50)
+    ) {
+      changes.record()
+    }
+    defer { watcher.cancel() }
 
     try await Task.sleep(for: .milliseconds(400))
     #expect(changes.count == 0)
@@ -118,4 +183,9 @@ private final class Changes: @unchecked Sendable {
     }
     return count >= expected
   }
+}
+
+/// Lets a watcher's callback reach the watcher.
+private final class WatcherBox: @unchecked Sendable {
+  var watcher: FileWatcher?
 }
