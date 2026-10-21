@@ -116,7 +116,10 @@ extension SpecStore {
   func reveal(_ path: FieldPath, in root: RootID) {
     var state = view.page == .root(root) ? view : ViewState(page: .root(root))
     state.diagram.openRows.formUnion(path.prefixes)
-    if let focus = state.diagram.focus, !path.components.starts(with: focus.components) {
+    // A card shown on its own holds the rows strictly inside it; its own row is in its parent.
+    if let focus = state.diagram.focus,
+      path == focus || !path.components.starts(with: focus.components)
+    {
       state.diagram.focus = nil
     }
     state.diagram.selection = path

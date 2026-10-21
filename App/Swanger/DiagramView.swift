@@ -28,6 +28,7 @@ struct DiagramView: View {
   @State private var pinchStart: Viewport?
   @State private var pointer: CGPoint?
   @State private var scrollMonitor: Any?
+  @State private var host = HostWindow()
 
   private static let scales: ClosedRange<CGFloat> = 0.2...3
 
@@ -54,6 +55,7 @@ struct DiagramView: View {
         if case .active(let location) = phase { pointer = location } else { pointer = nil }
       }
       .overlay(alignment: .bottomTrailing) { zoomControls }
+      .background(HostWindow.Reader(host: host))
       .onAppear {
         viewport = savedViewport ?? .initial
         viewportChanged(viewport)
@@ -211,7 +213,8 @@ struct DiagramView: View {
 
   /// Whether the scroll was used.
   private func handleScroll(_ event: NSEvent) -> Bool {
-    guard let pointer else { return false }
+    // The monitor sees every window's scrolling, and the hover can outlast a window opened on top.
+    guard let pointer, event.window === host.window else { return false }
     let deltaX = event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : event.scrollingDeltaX * 8
     let deltaY = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.scrollingDeltaY * 8
     if event.modifierFlags.contains(.command) {
@@ -221,6 +224,35 @@ struct DiagramView: View {
       viewport.offset.height += deltaY
     }
     return true
+  }
+}
+
+/// The window a view is in, held weakly so the view doesn't keep it alive.
+@MainActor private final class HostWindow {
+  weak var window: NSWindow?
+
+  struct Reader: NSViewRepresentable {
+    let host: HostWindow
+
+    func makeNSView(context: Context) -> ReaderView {
+      let view = ReaderView()
+      view.host = host
+      return view
+    }
+
+    func updateNSView(_ view: ReaderView, context: Context) {
+      view.host = host
+      host.window = view.window
+    }
+  }
+
+  final class ReaderView: NSView {
+    var host: HostWindow?
+
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      host?.window = window
+    }
   }
 }
 

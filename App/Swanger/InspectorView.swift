@@ -90,11 +90,7 @@ private struct FieldDetails: View {
           Text(markdown: description).textSelection(.enabled)
         }
       }
-      if let scalar = node.scalar { ScalarSection(scalar: scalar) }
-      ForEach(Array(itemsWithoutCard.enumerated()), id: \.offset) { depth, items in
-        ItemsSection(items: items, depth: depth)
-      }
-      valuesSection
+      ValueSections(node: node, path: path)
       if !node.rules.isEmpty || !node.cardNotes.isEmpty {
         Section("Rules") {
           ForEach(Array(node.rules.enumerated()), id: \.offset) { _, rule in
@@ -128,6 +124,29 @@ private struct FieldDetails: View {
     }
   }
 
+  private var flags: [String] {
+    var flags: [String] = []
+    if node.isDeprecated { flags.append("deprecated") }
+    if node.isReadOnly { flags.append("read only") }
+    if node.isWriteOnly { flags.append("write only") }
+    return flags
+  }
+}
+
+/// What a value can be: its format, pattern and allowed values, its items when the diagram has no
+/// card for them, its default and examples.
+private struct ValueSections: View {
+  let node: SchemaNode
+  let path: FieldPath
+
+  var body: some View {
+    if let scalar = node.scalar { ScalarSection(scalar: scalar) }
+    ForEach(Array(itemsWithoutCard.enumerated()), id: \.offset) { depth, items in
+      ItemsSection(items: items, depth: depth)
+    }
+    valuesSection
+  }
+
   /// The items of an array whose row opens no card, such as `array of string`, and their items
   /// in turn for an array of arrays: their own constraints are shown here, since the diagram has
   /// nowhere to show them.
@@ -140,14 +159,6 @@ private struct FieldDetails: View {
       items = next
     }
     return levels
-  }
-
-  private var flags: [String] {
-    var flags: [String] = []
-    if node.isDeprecated { flags.append("deprecated") }
-    if node.isReadOnly { flags.append("read only") }
-    if node.isWriteOnly { flags.append("write only") }
-    return flags
   }
 
   @ViewBuilder private var valuesSection: some View {
@@ -225,7 +236,9 @@ private struct RootDetails: View {
       Section {
         Text(root.name).font(.title3.bold())
         if let description = root.node.description { Text(markdown: description) }
+        LabeledContent("Type", value: root.node.shapeDescription)
       }
+      ValueSections(node: root.node, path: FieldPath())
       Section("The \(root.direction.rawValue) body of") {
         ForEach(root.operations, id: \.self) { operation in
           LabeledContent {
@@ -256,7 +269,9 @@ private struct FragmentDetails: View {
       Section {
         Text(fragment.name).font(.title3.bold()).foregroundStyle(Color.swangerViolet)
         if let description = fragment.node.description { Text(markdown: description) }
+        LabeledContent("Type", value: fragment.node.shapeDescription)
       }
+      ValueSections(node: fragment.node, path: FieldPath())
       Section("Defined in") {
         Text(fragment.id.description).font(.callout.monospaced()).textSelection(.enabled)
       }
