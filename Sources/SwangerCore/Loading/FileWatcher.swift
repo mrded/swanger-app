@@ -48,7 +48,8 @@ public final class FileWatcher: @unchecked Sendable {
   private let onChange: @Sendable () -> Void
   /// Guards everything below. Event handlers and debouncing run on it.
   private let queue = DispatchQueue(label: "Swanger.FileWatcher")
-  private var sources: [any DispatchSourceFileSystemObject] = []
+  /// Each watched path's source, with the file it was opened on.
+  private var watches: [String: Watch] = [:]
   private var fingerprints: [Fingerprint]
   private var pending: DispatchWorkItem?
   private var isCancelled = false
@@ -74,8 +75,12 @@ public final class FileWatcher: @unchecked Sendable {
     queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
     queue.sync {
       arm()
-      if let changedSince,
-        fingerprints.contains(where: { $0.modified ?? .distantPast >= changedSince })
+      // A file changed before its source was open sends no event, so look again now they are.
+      let current = unique.map(Fingerprint.init)
+      if current != fingerprints {
+        eventArrived()
+      } else if let changedSince,
+        current.contains(where: { $0.modified ?? .distantPast >= changedSince })
       {
         // Settling compares with the fingerprints, so forget the ones taken after the change.
         fingerprints = unique.map { _ in Fingerprint() }
@@ -85,7 +90,7 @@ public final class FileWatcher: @unchecked Sendable {
   }
 
   deinit {
-    for source in sources { source.cancel() }
+    for watch in watches.values { watch.source.cancel() }
     pending?.cancel()
   }
 
@@ -109,13 +114,25 @@ public final class FileWatcher: @unchecked Sendable {
   /// Opens a source for each file and folder that exists now. A file whose folder is missing is
   /// watched through the nearest folder above it that exists, moving down as folders appear. A
   /// symbolic link is watched along with the file it points to now, and that file's folder.
+  ///
+  /// A path still on the same file keeps its source; only the rest are reopened, so a change
+  /// doesn't need a second descriptor for every file while the old ones close.
   private func arm() {
     let targets = urls.map { $0.resolvingSymlinksInPath() }.filter { !urls.contains($0) }
     let files = urls + targets
     let folders = files.map { Self.nearestExistingFolder(above: $0) }
-    var watched: [URL] = []
-    for url in files + folders where !watched.contains(url) {
-      watched.append(url)
+    var wanted: [URL] = []
+    for url in files + folders where !wanted.contains(url) { wanted.append(url) }
+
+    let identities = Dictionary(
+      wanted.map { ($0.path, Self.identity(of: $0.path)) }, uniquingKeysWith: { first, _ in first })
+    for (path, watch) in watches
+    where identities[path] == nil || identities[path] != watch.file || watch.file == nil {
+      watch.source.cancel()
+      watches[path] = nil
+    }
+
+    for url in wanted where watches[url.path] == nil {
       let descriptor = open(url.path, O_EVTONLY)
       guard descriptor >= 0 else { continue }
       let source = DispatchSource.makeFileSystemObjectSource(
@@ -125,7 +142,8 @@ public final class FileWatcher: @unchecked Sendable {
       source.setEventHandler { [weak self] in self?.eventArrived() }
       source.setCancelHandler { close(descriptor) }
       source.resume()
-      sources.append(source)
+      watches[url.path] = Watch(
+        source: source, descriptor: descriptor, file: Self.identity(ofDescriptor: descriptor))
     }
   }
 
@@ -141,8 +159,8 @@ public final class FileWatcher: @unchecked Sendable {
   }
 
   private func disarm() {
-    for source in sources { source.cancel() }
-    sources = []
+    for watch in watches.values { watch.source.cancel() }
+    watches = [:]
   }
 
   private func eventArrived() {
@@ -156,12 +174,44 @@ public final class FileWatcher: @unchecked Sendable {
   /// Runs once a burst of events is over.
   private func settle() {
     guard !isCancelled else { return }
-    // A file replaced or deleted keeps its old source watching nothing, so start again.
-    disarm()
+    // A file replaced or deleted keeps its old source watching nothing, so move to the new one.
     arm()
     let current = urls.map(Fingerprint.init)
     guard current != fingerprints else { return }
     fingerprints = current
     onChange()
+  }
+}
+
+extension FileWatcher {
+  /// One open source.
+  private struct Watch {
+    let source: any DispatchSourceFileSystemObject
+    let descriptor: Int32
+    /// The device and inode the source watches.
+    let file: FileIdentity?
+  }
+
+  struct FileIdentity: Equatable {
+    let device: Int64
+    let inode: UInt64
+  }
+
+  /// The file at `path` now, following symbolic links as `open` does.
+  fileprivate static func identity(of path: String) -> FileIdentity? {
+    var info = stat()
+    guard stat(path, &info) == 0 else { return nil }
+    return FileIdentity(device: Int64(info.st_dev), inode: UInt64(info.st_ino))
+  }
+
+  fileprivate static func identity(ofDescriptor descriptor: Int32) -> FileIdentity? {
+    var info = stat()
+    guard fstat(descriptor, &info) == 0 else { return nil }
+    return FileIdentity(device: Int64(info.st_dev), inode: UInt64(info.st_ino))
+  }
+
+  /// The descriptor open for each watched path, for tests.
+  var descriptors: [String: Int32] {
+    queue.sync { watches.mapValues(\.descriptor) }
   }
 }

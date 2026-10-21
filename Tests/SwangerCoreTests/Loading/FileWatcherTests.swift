@@ -107,6 +107,26 @@ import Testing
     #expect(changes.count == 1)
   }
 
+  @Test func keepsTheWatchesOfFilesThatDidNotChange() async throws {
+    // Reopening every file on each change would need twice the descriptors for a moment, which a
+    // spec of a hundred or so files would run out of under the 256 an app gets by default.
+    let changes = Changes()
+    let watcher = FileWatcher(urls: [spec, common], latency: .milliseconds(50)) {
+      changes.record()
+    }
+    defer { watcher.cancel() }
+    let before = watcher.descriptors
+
+    try "openapi: 3.0.3\n".write(to: spec, atomically: true, encoding: .utf8)
+    #expect(await changes.wait(for: 1))
+
+    let after = watcher.descriptors
+    #expect(after[common.path] == before[common.path])
+    #expect(after[folder.path] == before[folder.path])
+    #expect(after[spec.path] != nil)
+    #expect(after[spec.path] != before[spec.path])
+  }
+
   @Test func noticesChangesToASymlinksTarget() async throws {
     let elsewhere = folder.appending(path: "elsewhere")
     try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: false)
