@@ -42,9 +42,15 @@ jobs:
           restore-keys: spm-${{ runner.os }}-${{ env.XCODE_APP }}-
 
       - name: Lint
-        run: xcrun swift-format lint --strict --recursive Package.swift Sources Tests App/Swanger
+        run: xcrun swift-format lint --strict --recursive Package.swift Sources Tests App/Swanger App/SwangerUITests
+
+      - name: Download real-world specs
+        run: scripts/fetch-real-world-specs.sh
 
       - name: Test
+        env:
+          # RealWorldSpecTests fails rather than skips without the downloaded specs.
+          REQUIRE_REAL_WORLD_SPECS: "1"
         run: |
           mkdir -p build/test-results
           swift test --parallel --xunit-output build/test-results/swift-test.xml
@@ -87,14 +93,8 @@ jobs:
             -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath build/SourcePackages \
             -resultBundlePath build/results/build-for-testing.xcresult
 
-      - name: Test
+      - name: UI smoke tests
         run: |
-          # The scheme gets test targets with the UI smoke tests (plan task 11); until then there's
-          # nothing to run and xcodebuild would refuse the action.
-          if ! grep -q '<TestableReference' "$PROJECT/xcshareddata/xcschemes/$SCHEME.xcscheme"; then
-            echo "No test targets in the $SCHEME scheme yet; skipping."
-            exit 0
-          fi
           xcodebuild test-without-building \
             -project "$PROJECT" -scheme "$SCHEME" -destination 'platform=macOS' \
             -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath build/SourcePackages \
