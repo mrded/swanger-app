@@ -46,18 +46,29 @@ mismatch or extending the model.
 
 Early development. See [the v1 plan](docs/plans/20261020-swanger-v1.md) for what's coming.
 
+## Installing
+
+Swanger needs macOS 15 (Sequoia) or later. Download `Swanger-<version>.dmg` (or `.zip`) from the
+[latest release](https://github.com/mrded/swanger-app/releases/latest) and drag `Swanger.app` into
+**Applications**.
+
+Releases aren't notarised by Apple yet, so macOS blocks Swanger the first time you open it ("Apple could not
+verify…"). Click **Done**, then open **System Settings › Privacy & Security**, scroll down to the message
+about Swanger and click **Open Anyway**. You only need to do this once. Or remove the quarantine flag
+instead:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Swanger.app
+```
+
 ## Trying a build from a pull request
 
 Every CI run attaches the app it built. Open the run from the pull request's **Checks** tab (or the
 [Actions](https://github.com/mrded/swanger-app/actions/workflows/ci.yml) page), download
 `Swanger-<commit>.zip` under **Artifacts**, and unzip it.
 
-These builds are signed ad hoc, not with a Developer ID, so macOS will refuse to open them at first. Either
-right-click `Swanger.app` and choose **Open**, then **Open** again, or remove the quarantine flag:
-
-```sh
-xattr -dr com.apple.quarantine Swanger.app
-```
+These builds are signed ad hoc, not with a Developer ID, so open them the same way as a release (see
+[Installing](#installing)).
 
 Artifacts are kept for 14 days.
 
