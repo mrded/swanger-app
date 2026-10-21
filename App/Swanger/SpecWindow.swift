@@ -20,6 +20,8 @@ struct SpecWindow: View {
       // The store outlives a rename or move, so it's told where the file went.
       .onChange(of: url) { _, url in store.fileMoved(to: url) }
       .onDisappear { store.stop() }
+      .focusedSceneValue(\.specStore, store)
+      .background(SwipeNavigation(store: store))
   }
 
   @ViewBuilder private var content: some View {
@@ -28,7 +30,7 @@ struct SpecWindow: View {
         SpecSidebar(spec: spec, store: store)
           .navigationSplitViewColumnWidth(min: 200, ideal: 260)
       } detail: {
-        SpecDetail(spec: spec, selection: store.selection ?? .overview)
+        SpecDetail(spec: spec, store: store)
           .safeAreaInset(edge: .top, spacing: 0) {
             if let error = store.loadError {
               ReloadFailedBanner(error: error) { store.reload() }
@@ -36,11 +38,27 @@ struct SpecWindow: View {
           }
       }
       .inspector(isPresented: $showsInspector) {
-        InspectorPlaceholder()
-          .inspectorColumnWidth(min: 220, ideal: 280)
+        InspectorView(spec: spec, store: store)
+          .inspectorColumnWidth(min: 240, ideal: 300)
       }
       .navigationSubtitle(subtitle(of: spec))
       .toolbar {
+        ToolbarItemGroup(placement: .navigation) {
+          Button {
+            store.goBack()
+          } label: {
+            Label("Back", systemImage: "chevron.backward")
+          }
+          .disabled(!store.history.canGoBack)
+          .help("Go back")
+          Button {
+            store.goForward()
+          } label: {
+            Label("Forward", systemImage: "chevron.forward")
+          }
+          .disabled(!store.history.canGoForward)
+          .help("Go forward")
+        }
         if !spec.warnings.isEmpty {
           ToolbarItem { WarningsButton(warnings: spec.warnings) }
         }
@@ -65,14 +83,5 @@ struct SpecWindow: View {
     let api = [spec.title, spec.apiVersion].compactMap(\.self).joined(separator: " ")
     return ["OpenAPI \(spec.declaredVersion)", api].filter { !$0.isEmpty }
       .joined(separator: " · ")
-  }
-}
-
-/// Shown until task 9 gives the inspector its field details.
-private struct InspectorPlaceholder: View {
-  var body: some View {
-    ContentUnavailableView(
-      "No Selection", systemImage: "sidebar.trailing",
-      description: Text("Select a field to see its details."))
   }
 }
