@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwangerCore
+import SwangerValidation
 
 /// One window's spec: loads it in the background, reloads it when it or a file it refers to
 /// changes, and keeps the window's history of where it's been.
@@ -12,6 +13,11 @@ final class SpecStore {
   private(set) var spec: Spec?
   /// Finds roots, fragments and fields in ``spec``.
   private(set) var searchIndex: SearchIndex?
+  /// Checks Try it's payloads against ``spec``.
+  private(set) var validator: PayloadValidator?
+  /// Whether a schema page shows its diagram or Try it. Not part of the history: it stays as
+  /// it is from page to page.
+  private(set) var mode = DetailMode.diagram
   /// Why the latest load failed. With a ``spec``, it's shown as a banner over the old model.
   private(set) var loadError: LoadError?
   private(set) var isLoading = false
@@ -65,7 +71,8 @@ final class SpecStore {
       let result = await Task.detached(priority: .userInitiated) {
         Result { () throws(LoadError) in
           let spec = try Spec.load(url)
-          return (spec, SearchIndex(spec: spec))
+          return Loaded(
+            spec: spec, searchIndex: SearchIndex(spec: spec), validator: .init(spec: spec))
         }
       }.value
       guard !Task.isCancelled else { return }
@@ -73,12 +80,20 @@ final class SpecStore {
     }
   }
 
-  private func apply(_ result: Result<(Spec, SearchIndex), LoadError>, loadedAt started: Date) {
+  private struct Loaded: Sendable {
+    let spec: Spec
+    let searchIndex: SearchIndex
+    let validator: PayloadValidator
+  }
+
+  private func apply(_ result: Result<Loaded, LoadError>, loadedAt started: Date) {
     isLoading = false
     switch result {
-    case .success(let (spec, searchIndex)):
+    case .success(let loaded):
+      let spec = loaded.spec
       self.spec = spec
-      self.searchIndex = searchIndex
+      searchIndex = loaded.searchIndex
+      validator = loaded.validator
       loadError = nil
       history.prune { spec.contains($0) }
     case .failure(let error):
@@ -115,18 +130,19 @@ extension SpecStore {
   /// Shows the field at `path` in a root, its cards open, selected and marked.
   func reveal(_ path: FieldPath, in root: RootID) {
     var state = view.page == .root(root) ? view : ViewState(page: .root(root))
-    state.diagram.openRows.formUnion(path.prefixes)
-    // A card shown on its own holds the rows strictly inside it; its own row is in its parent.
-    if let focus = state.diagram.focus,
-      path == focus || !path.components.starts(with: focus.components)
-    {
-      state.diagram.focus = nil
-    }
-    state.diagram.selection = path
-    state.diagram.highlight = path
+    state.diagram.show(path)
     let isNewPage = state.page != view.page
     move(to: state)
     if isNewPage { restored() }
+    pendingReveal = path
+  }
+
+  /// Selects and marks the row at `path` on this page, opening its cards, without adding to the
+  /// history: Try it's issues use it, and going through them isn't a move each.
+  func revealOnThisPage(_ path: FieldPath) {
+    var state = view
+    state.diagram.show(path)
+    history.replace(with: state)
     pendingReveal = path
   }
 
@@ -168,6 +184,18 @@ extension SpecStore {
     guard history.goForward(leaving: liveViewport) else { return false }
     restored()
     return true
+  }
+
+  /// Switches between the diagram and Try it. The diagram's viewport is kept for when it's back.
+  func show(_ mode: DetailMode) {
+    guard mode != self.mode else { return }
+    if self.mode == .diagram, let liveViewport {
+      var state = view
+      state.viewport = liveViewport
+      history.replace(with: state)
+    }
+    liveViewport = nil
+    self.mode = mode
   }
 
   func find() {

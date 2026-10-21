@@ -59,6 +59,15 @@ struct SpecWindow: View {
           .disabled(!store.history.canGoForward)
           .help("Go forward")
         }
+        ToolbarItem(placement: .principal) {
+          Picker("View", selection: Binding(get: { store.mode }, set: { store.show($0) })) {
+            Text("Diagram").tag(DetailMode.diagram)
+            Text("Try it").tag(DetailMode.tryIt)
+          }
+          .pickerStyle(.segmented)
+          .disabled(store.view.page == .overview)
+          .help("Show the schema as a diagram, or check a payload against it")
+        }
         if !spec.warnings.isEmpty {
           ToolbarItem { WarningsButton(warnings: spec.warnings) }
         }
