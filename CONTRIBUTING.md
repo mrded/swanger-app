@@ -23,12 +23,16 @@ stay a thin SwiftUI layer on top.
 
 ## Building and testing
 
+The `Makefile` wraps the usual commands; `make` lists them.
+
 ```sh
-swift test --parallel
-xcodebuild -project App/Swanger.xcodeproj -scheme Swanger build
+make check                      # lint, test and build the app, as CI does
+make test FILTER=SkeletonTests  # only the matching tests
+make run SPEC=path/to/spec.yaml # build the app and open a spec with it
+make release                    # a Release build, signed ad hoc, at build/Swanger.zip
 ```
 
-Or open `App/Swanger.xcodeproj` in Xcode and run the **Swanger** scheme.
+Or open `App/Swanger.xcodeproj` in Xcode (`make xcode`) and run the **Swanger** scheme.
 
 The app is signed to run locally (ad hoc) and isn't sandboxed, so it can read files a spec refers to next to
 it. Debug builds have the hardened runtime switched off by Xcode so the debugger can attach; Release builds
@@ -40,8 +44,8 @@ Code is formatted with `swift-format` (it ships with Xcode) using the `.swift-fo
 Before opening a pull request:
 
 ```sh
-xcrun swift-format format --in-place --recursive Sources Tests App/Swanger
-xcrun swift-format lint --strict --recursive Package.swift Sources Tests App/Swanger
+make format                     # xcrun swift-format format --in-place …
+make lint                       # xcrun swift-format lint --strict …, as CI runs it
 ```
 
 ## Continuous integration
