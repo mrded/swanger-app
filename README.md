@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mrded/swanger-app/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mrded/swanger-app/actions/workflows/ci.yml)
 
-**OpenAPI schema viewer for macOS.**
+**OpenAPI schema viewer for macOS.** Website: [mrded.github.io/swanger-app](https://mrded.github.io/swanger-app/).
 
 Swanger opens an OpenAPI 3.0 or 3.1 file (JSON or YAML) and shows the resources it defines:
 

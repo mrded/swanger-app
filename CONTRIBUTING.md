@@ -12,6 +12,7 @@ Thanks for your interest. Issues and pull requests are welcome.
 | `Tests/` | Swift Testing suites, with hand-written fixtures and snapshots |
 | `App/Swanger.xcodeproj` | The macOS app, depending on the local package |
 | `App/Swanger/` | SwiftUI views, document type, assets |
+| `site/` | The website. `make site` assembles it with `docs/screenshots/` at `build/site`; pushes to `main` deploy it to GitHub Pages |
 
 Most of the logic lives in the package, so it can be tested with `swift test` alone. The app target should
 stay a thin SwiftUI layer on top.
