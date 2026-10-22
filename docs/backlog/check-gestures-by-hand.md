@@ -3,10 +3,11 @@ worth: yes
 where: App/Swanger/DiagramView.swift
 added: 2026-10-21
 ---
-# Check task 9's hover, pinch and swipe by hand
+# Check hover, pinch and swipe by hand
 
-The rest of task 9 was checked in the running app on 2026-10-21 by driving it with synthesised events.
-Those can't show tooltips, pinch or make a three-finger swipe, so these are still unchecked:
+The rest of the overview, diagram and history UI was checked in the running app on 2026-10-21 by
+driving it with synthesised events. Those can't show tooltips, pinch or make a three-finger swipe, so
+these are still unchecked:
 
 - Overview: hovering a dot in the usage grid shows the paths (`.help`), and so does a rotated column
   header.

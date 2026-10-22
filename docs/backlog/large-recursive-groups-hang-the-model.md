@@ -20,7 +20,7 @@ Caching alone can't fix it, because the trees themselves are that big. The rule 
 example, once a path is inside a recursive group, show a reference to another member of the group as
 `recursive` after the first one or two members, rather than only when the same member repeats. Small
 cycles such as Order ⇄ Customer should keep looking the way they do now. That changes a boundary, so
-per the plan, edit "Model boundaries" first. Then add Stripe back to
+edit `docs/model-boundaries.md` first. Then add Stripe back to
 `scripts/fetch-real-world-specs.sh` (pinned at `f3799ad599a6cf7c76fd94ce72274c0367cc2ba7`, SHA-256
 `7cff4cc46d0654101a36a3302f7544640f5f73e4f3cad6f264f0e23c19fa1776`) and to `RealWorldSpecTests`.
 

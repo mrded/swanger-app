@@ -136,3 +136,9 @@ Swanger keeps dependencies few and permissively licensed:
   product) for building `OrderedJSON` objects; swift-json-schema depends on it already
 
 Please open an issue before adding a new one.
+
+## Further reading
+
+- [How Swanger works](docs/architecture.md): scope and notes on each part of the code
+- [Model boundaries](docs/model-boundaries.md): what the diagram deliberately leaves to the validator
+- [`docs/backlog/`](docs/backlog): known issues and deferred work, one file per item

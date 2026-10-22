@@ -20,7 +20,7 @@ Both become unresolved warnings: the first because named anchors aren't supporte
 it's read as a relative file path. `RealWorldSpecTests.petstore31` pins exactly these two warnings, so
 it fails (on purpose) once this is fixed. Update it then.
 
-What a fix needs, which is why it wasn't done inline in task 11:
+What a fix needs, which is why it wasn't done inline when the real-world spec tests were added:
 
 - `RefResolver` resolving each `$ref` against the nearest enclosing `$id` (the base URI), not only the
   file, and an index of every `$id` and `$anchor` in each loaded document.
