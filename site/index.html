@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swanger: OpenAPI schema viewer for macOS</title>
+  <meta name="description" content="Swanger is a native macOS app that opens an OpenAPI 3.0 or 3.1 file and shows its request and response schemas as interactive block diagrams. Free and open source.">
+  <link rel="canonical" href="https://mrded.github.io/swanger-app/">
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
+  <meta name="color-scheme" content="light dark">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Swanger: OpenAPI schema viewer for macOS">
+  <meta property="og:description" content="Open an OpenAPI file and see every request and response schema as an interactive block diagram.">
+  <meta property="og:url" content="https://mrded.github.io/swanger-app/">
+  <meta property="og:image" content="https://mrded.github.io/swanger-app/screenshots/diagram-light.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Swanger",
+    "alternateName": "Swanger OpenAPI schema viewer for macOS",
+    "description": "OpenAPI schema viewer for macOS.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS 15 or later",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "downloadUrl": "https://github.com/mrded/swanger-app/releases/latest",
+    "url": "https://mrded.github.io/swanger-app/",
+    "license": "https://opensource.org/licenses/MIT"
+  }
+  </script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <img class="app-icon" src="icon.png" alt="" width="128" height="128">
+    <h1>Swanger</h1>
+    <p class="tagline">OpenAPI schema viewer for macOS</p>
+    <p class="lede">
+      Open an OpenAPI 3.0 or 3.1 file (JSON or YAML) and see every request and response body
+      as an interactive block diagram.
+    </p>
+    <p class="actions">
+      <a class="button" href="https://github.com/mrded/swanger-app/releases/latest">Download for macOS</a>
+      <a class="button secondary" href="https://github.com/mrded/swanger-app">Source on GitHub</a>
+    </p>
+    <p class="fine">Free and open source (MIT). Needs macOS 15 Sequoia or later.</p>
+  </header>
+
+  <main>
+    <section class="feature">
+      <div class="copy">
+        <h2>Schemas as diagrams</h2>
+        <p>
+          Every request and response body schema becomes a block diagram you can open up card by card.
+          The inspector spells out each field's rules in plain English.
+        </p>
+      </div>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="screenshots/diagram-dark.png">
+        <img src="screenshots/diagram-light.png" width="1712" height="1012" loading="lazy"
+          alt="A request schema's diagram: the NewOrder card with its customer, lines and payment cards open, and the inspector showing the sku field's pattern">
+      </picture>
+    </section>
+
+    <section class="feature">
+      <div class="copy">
+        <h2>See what's shared</h2>
+        <p>
+          The overview has a card for each request and response schema, and a grid of the shared
+          fragments (<code>components/schemas</code>) each one is built from.
+        </p>
+      </div>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="screenshots/overview-dark.png">
+        <img src="screenshots/overview-light.png" width="1712" height="1012" loading="lazy"
+          alt="The overview: a card for each request schema, and a grid of which shared fragments each schema uses">
+      </picture>
+    </section>
+
+    <section class="feature">
+      <div class="copy">
+        <h2>Try it</h2>
+        <p>
+          Paste a JSON payload and Swanger checks it against the schema, explaining in plain English
+          what's wrong.
+        </p>
+      </div>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="screenshots/try-it-dark.png">
+        <img src="screenshots/try-it-light.png" width="1800" height="1104" loading="lazy"
+          alt="Try it: a refund payload in the editor, with three issues listed under it: it mustn't have amount, a rejected refund needs a reason, and paymentId must be a UUID">
+      </picture>
+    </section>
+
+    <section class="note">
+      <h2>Not an API explorer</h2>
+      <p>
+        Swanger shows schemas only. It has no endpoint list, parameters, servers or auth, and it never
+        sends requests. It reads <code>paths</code> only to find which schemas are request and response bodies.
+      </p>
+    </section>
+
+    <section class="install" id="install">
+      <h2>Installing</h2>
+      <ol>
+        <li>
+          Download <code>Swanger-&lt;version&gt;.dmg</code> from the
+          <a href="https://github.com/mrded/swanger-app/releases/latest">latest release</a>
+          and drag <strong>Swanger.app</strong> into <strong>Applications</strong>.
+        </li>
+        <li>
+          Apple hasn't notarised releases yet, so macOS blocks Swanger the first time you open it.
+          Click <strong>Done</strong>, then open <strong>System Settings › Privacy &amp; Security</strong>,
+          scroll down to the message about Swanger and click <strong>Open Anyway</strong>. You only need to do this once.
+        </li>
+      </ol>
+      <p>Or remove the quarantine flag in Terminal instead:</p>
+      <pre><code>xattr -dr com.apple.quarantine /Applications/Swanger.app</code></pre>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Swanger (with an <strong>n</strong>, not Swagger) ·
+      <a href="https://github.com/mrded/swanger-app">GitHub</a> ·
+      <a href="https://github.com/mrded/swanger-app/issues">Issues</a> ·
+      <a href="https://github.com/mrded/swanger-app/blob/main/LICENSE">MIT licence</a>
+    </p>
+  </footer>
+</body>
+</html>

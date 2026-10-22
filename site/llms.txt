@@ -1,0 +1,22 @@
+# Swanger
+
+> Swanger (spelled with an "n", not Swagger) is a free, open-source (MIT) native macOS app for viewing
+> OpenAPI schemas. It opens an OpenAPI 3.0 or 3.1 file (JSON or YAML) and shows its request and response
+> body schemas as interactive block diagrams. It needs macOS 15 Sequoia or later.
+
+What it does:
+
+- Shows every request and response body schema as an interactive block diagram, with each field's rules
+  in plain English.
+- Lists the shared fragments (`components/schemas`) the schemas are built from, and where each one is used.
+- "Try it" checks a JSON payload against a schema and explains what's wrong in plain English.
+
+What it isn't: an API explorer. There's no endpoint list, parameters, servers or auth, and it never sends
+requests.
+
+## Links
+
+- [Website](https://mrded.github.io/swanger-app/)
+- [Download the latest release](https://github.com/mrded/swanger-app/releases/latest): a `.dmg` or `.zip`
+- [Source code and README](https://github.com/mrded/swanger-app)
+- [Issues](https://github.com/mrded/swanger-app/issues)

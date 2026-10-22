@@ -10,7 +10,7 @@ FORMAT_PATHS := Package.swift Sources Tests App/Swanger App/SwangerUITests
 SPEC ?= Tests/SwangerValidationTests/Fixtures/payments/spec.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help check test real-world ui-test lint format build run release xcode clean
+.PHONY: help check test real-world ui-test lint format build run release site xcode clean
 
 help: ## List the commands
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z-]+:.*## / { printf "  make %-8s %s\n", $$1, $$2 }' \
@@ -46,6 +46,13 @@ release: ## Build a Release app, signed ad hoc, at build/Swanger.zip
 	ditto -c -k --sequesterRsrc --keepParent $(DERIVED)/Build/Products/Release/Swanger.app \
 		build/Swanger.zip
 	@echo "build/Swanger.zip"
+
+site: ## Assemble the website at build/site, with the README's screenshots
+	rm -rf build/site
+	mkdir -p build/site/screenshots
+	cp -R site/. build/site/
+	cp docs/screenshots/*.png build/site/screenshots/
+	@echo "build/site (preview: python3 -m http.server -d build/site)"
 
 xcode: ## Open the project in Xcode
 	open $(PROJECT)

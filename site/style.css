@@ -1,0 +1,131 @@
+:root {
+  --bg: #ffffff;
+  --surface: #f5f5f7;
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --accent: #0a66d8;
+  --accent-text: #ffffff;
+  --border: #d2d2d7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161617;
+    --surface: #232325;
+    --text: #f5f5f7;
+    --muted: #a1a1a6;
+    --accent: #3d8bfd;
+    --accent-text: #ffffff;
+    --border: #3a3a3c;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); }
+
+code, pre {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+}
+
+h1, h2 { line-height: 1.15; letter-spacing: -0.015em; }
+
+.hero, main, footer {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.hero {
+  text-align: center;
+  padding-top: 72px;
+  padding-bottom: 56px;
+}
+
+.app-icon { width: 128px; height: 128px; }
+
+.hero h1 { font-size: 56px; margin: 12px 0 0; }
+
+.tagline { font-size: 24px; color: var(--muted); margin: 4px 0 20px; }
+
+.lede { max-width: 36em; margin: 0 auto 28px; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 0 0 12px; }
+
+.button {
+  display: inline-block;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.button:hover { filter: brightness(1.08); }
+
+.fine { color: var(--muted); font-size: 14px; margin: 0; }
+
+.feature { padding: 48px 0; border-top: 1px solid var(--border); }
+
+.feature .copy { max-width: 40em; margin: 0 auto 28px; text-align: center; }
+
+.feature h2 { font-size: 32px; margin: 0 0 8px; }
+
+.feature img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.14);
+}
+
+.note, .install {
+  max-width: 44em;
+  margin: 0 auto;
+  padding: 48px 0;
+  border-top: 1px solid var(--border);
+}
+
+.note h2, .install h2 { font-size: 26px; margin: 0 0 12px; }
+
+.install li { margin-bottom: 10px; }
+
+pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+footer {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  padding-bottom: 48px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .hero { padding-top: 48px; }
+  .hero h1 { font-size: 44px; }
+  .tagline { font-size: 20px; }
+  .feature h2 { font-size: 26px; }
+}
