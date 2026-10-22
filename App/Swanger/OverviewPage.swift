@@ -126,49 +126,46 @@ private struct UsageGrid: View {
   /// in a tooltip.
   private static let maxHeaderHeight: CGFloat = 260
 
+  var body: some View {
+    ScrollView(.horizontal) {
+      Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+        GridRow(alignment: .bottom) {
+          let headerHeight = headerHeight
+          Color.clear.frame(width: 1, height: 1)
+          ForEach(columns) { root in
+            Text(root.name)
+              .font(.caption)
+              .lineLimit(1)
+              .frame(width: headerHeight, alignment: .leading)
+              .rotationEffect(.degrees(-90))
+              .frame(width: Self.cell, height: headerHeight)
+              .help(root.name)
+          }
+        }
+        ForEach(fragments) { fragment in
+          GridRow {
+            Button(fragment.name) { store.show(.fragment(fragment.id)) }
+              .buttonStyle(.link)
+              .foregroundStyle(Color.swangerViolet)
+              .lineLimit(1)
+              .padding(.trailing, 12)
+              .frame(maxWidth: 240, alignment: .leading)
+            ForEach(columns) { root in
+              cell(fragment, root)
+            }
+          }
+          .frame(height: Self.cell)
+          Divider().gridCellUnsizedAxes(.horizontal)
+        }
+      }
+    }
+  }
+
   /// Tall enough for the longest column name, up to `maxHeaderHeight`.
   private var headerHeight: CGFloat {
     let font = NSFont.preferredFont(forTextStyle: .caption1)
-    let longest =
-      columns.map { ($0.name as NSString).size(withAttributes: [.font: font]).width }
-      .max() ?? 0
-    return min(ceil(longest) + 4, Self.maxHeaderHeight)
-  }
-
-  var body: some View {
-    let headerHeight = headerHeight
-    return
-      ScrollView(.horizontal) {
-        Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
-          GridRow(alignment: .bottom) {
-            Color.clear.frame(width: 1, height: 1)
-            ForEach(columns) { root in
-              Text(root.name)
-                .font(.caption)
-                .lineLimit(1)
-                .frame(width: headerHeight, alignment: .leading)
-                .rotationEffect(.degrees(-90))
-                .frame(width: Self.cell, height: headerHeight)
-                .help(root.name)
-            }
-          }
-          ForEach(fragments) { fragment in
-            GridRow {
-              Button(fragment.name) { store.show(.fragment(fragment.id)) }
-                .buttonStyle(.link)
-                .foregroundStyle(Color.swangerViolet)
-                .lineLimit(1)
-                .padding(.trailing, 12)
-                .frame(maxWidth: 240, alignment: .leading)
-              ForEach(columns) { root in
-                cell(fragment, root)
-              }
-            }
-            .frame(height: Self.cell)
-            Divider().gridCellUnsizedAxes(.horizontal)
-          }
-        }
-      }
+    let longest = columns.map { ($0.name as NSString).size(withAttributes: [.font: font]).width }
+    return min(ceil(longest.max() ?? 0) + 4, Self.maxHeaderHeight)
   }
 
   @ViewBuilder private func cell(_ fragment: Fragment, _ root: RootSchema) -> some View {
