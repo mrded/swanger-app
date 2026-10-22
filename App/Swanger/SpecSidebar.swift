@@ -7,15 +7,20 @@ struct SpecSidebar: View {
   let spec: Spec
   @Bindable var store: SpecStore
   @FocusState private var isSearchFocused: Bool
+  // Per window, so each open spec keeps its own folds.
+  @SceneStorage("sidebarRequestsExpanded") private var requestsExpanded = true
+  @SceneStorage("sidebarResponsesExpanded") private var responsesExpanded = true
+  @SceneStorage("sidebarFragmentsExpanded") private var fragmentsExpanded = true
 
   var body: some View {
     List(selection: selection) {
       if query.isEmpty {
         Label("Overview", systemImage: "square.grid.2x2").tag(SidebarItem.page(.overview))
-        rootSection("Request schemas", roots: spec.requestSchemas)
-        rootSection("Response schemas", roots: spec.responseSchemas)
+        rootSection("Request schemas", roots: spec.requestSchemas, isExpanded: $requestsExpanded)
+        rootSection(
+          "Response schemas", roots: spec.responseSchemas, isExpanded: $responsesExpanded)
         if !spec.fragments.isEmpty {
-          Section("Shared fragments") {
+          Section("Shared fragments", isExpanded: $fragmentsExpanded) {
             ForEach(spec.fragments) { fragment in
               FragmentRow(fragment: fragment, spec: spec)
                 .tag(SidebarItem.page(.fragment(fragment.id)))
@@ -56,8 +61,10 @@ struct SpecSidebar: View {
     }
   }
 
-  private func rootSection(_ title: String, roots: [RootSchema]) -> some View {
-    Section(title) {
+  private func rootSection(_ title: String, roots: [RootSchema], isExpanded: Binding<Bool>)
+    -> some View
+  {
+    Section(title, isExpanded: isExpanded) {
       ForEach(roots) { root in
         Label(root.name, systemImage: root.direction.systemImage)
           .help(root.operations.map(\.description).joined(separator: "\n"))
