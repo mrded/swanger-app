@@ -106,7 +106,7 @@ import Testing
   }
 
   /// The model shows what the keywords say and doesn't prove that nothing can match them: that's
-  /// for the validator (see "Model boundaries" in the plan).
+  /// for the validator (see `docs/model-boundaries.md`).
   @Test(arguments: [
     ("{type: string, oneOf: [{type: string}, {type: integer}]}", "one of string or integer"),
     ("{type: string, oneOf: [{type: integer}, {type: boolean}]}", "one of integer or boolean"),

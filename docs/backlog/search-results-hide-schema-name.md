@@ -9,4 +9,4 @@ A result's subtitle (`<schema> · <path>`) is truncated from the head, so a long
 name, the one part that tells same-named fields apart. Searching `reference` in
 `digital-waste-tracking-api-docs/docs/api/openapi-beta-2.yaml` gives five `reference` rows that all read
 "…est · supportingReferences[].reference". Show the schema on its own line, or truncate the path
-instead of the name. Seen in the task 9 hand check.
+instead of the name. Seen in the diagram hand check of 2026-10-21.

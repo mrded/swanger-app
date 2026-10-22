@@ -15,8 +15,8 @@ import OrderedJSON
 /// schema outside itself, because then its tree depends on where it's used.
 ///
 /// The tree is for showing the schema, not for validating against it: it may be less strict than
-/// JSON Schema for rare keyword combinations, but never stricter. See "Model boundaries" in
-/// `docs/plans/20261020-swanger-v1.md` before extending it.
+/// JSON Schema for rare keyword combinations, but never stricter. See
+/// `docs/model-boundaries.md` before extending it.
 final class SchemaBuilder {
   let resolver: RefResolver
   /// Every fragment met so far, in the order met.
