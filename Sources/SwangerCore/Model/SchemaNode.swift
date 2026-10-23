@@ -103,9 +103,13 @@ public struct SchemaNode: Equatable, Sendable {
     case .object: base = "object"
     case .array(let array): base = array.items.map { "array of \($0.typeDescription)" } ?? "array"
     case .scalar(let scalar):
-      // A list of values to pick from; the values themselves are shown beside it.
-      if let values = scalar.allowedValues, values.count(where: { $0 != .null }) > 1 {
+      let values = scalar.allowedValues?.filter { $0 != .null } ?? []
+      if values.count > 1 {
+        // A list of values to pick from; the values themselves are shown beside it.
         base = "enum"
+      } else if let value = values.first, scalar.allows(value) {
+        // Only one value can be sent, so it says more than its type.
+        base = value.literal
       } else {
         base = scalar.types.isEmpty ? "any" : list(scalar.types, "or")
       }
@@ -235,6 +239,12 @@ public struct ScalarSchema: Equatable, Sendable {
     self.format = format
     self.patterns = patterns
     self.allowedValues = allowedValues
+  }
+
+  /// The value is one of `types`: an integer counts as a number.
+  func allows(_ value: JSONValue) -> Bool {
+    let type = value.primitive.rawValue
+    return types.isEmpty || types.contains(type) || (type == "integer" && types.contains("number"))
   }
 }
 

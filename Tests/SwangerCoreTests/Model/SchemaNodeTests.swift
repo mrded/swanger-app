@@ -76,11 +76,13 @@ import Testing
     ("{type: [array, object]}", "one of array or object"),
     ("{type: 'null'}", "null"),
     ("{}", "any"),
-    ("{const: card}", "string"),
-    ("{enum: [null, card]}", "string or null"),
+    ("{const: card}", #""card""#),
+    ("{enum: [null, card]}", #""card" or null"#),
     ("{const: null}", "null"),
-    ("{type: [string, 'null'], enum: [a]}", "string"),
-    ("{type: [string, 'null'], enum: [a, null]}", "string or null"),
+    ("{type: [string, 'null'], enum: [a]}", #""a""#),
+    ("{type: [string, 'null'], enum: [a, null]}", #""a" or null"#),
+    ("{type: number, const: 2}", "2"),
+    ("{const: true}", "true"),
     ("{type: array, items: {type: integer}}", "array of integer"),
     ("{type: object}", "object"),
     ("{type: string, properties: {a: {type: integer}}}", "string"),
@@ -503,7 +505,7 @@ import Testing
     ),
     // A `type` or allowed values of its own say more.
     ("{type: string, if: {minLength: 1}, then: {type: string}, else: {type: number}}", "string"),
-    ("{enum: [1], if: {type: number}, then: {type: number}, else: {type: string}}", "integer"),
+    ("{enum: [1], if: {type: number}, then: {type: number}, else: {type: string}}", "1"),
   ])
   func typeComesFromConditionBranches(schema: String, type: String) throws {
     #expect(try node(schema).shapeDescription == type)

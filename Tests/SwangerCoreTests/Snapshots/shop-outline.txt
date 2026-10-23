@@ -187,7 +187,7 @@ stats: 2 fields, 1 fragments, 0 rules
 
 ## Card (spec.yaml#/components/schemas/Card)
 (fragment): Card
-  method*: string
+  method*: "card"
     - must be "card"
   cardNumber*: string
     - must match `^\d{16}$`
@@ -196,7 +196,7 @@ stats: 2 fields, 1 fragments, 0 rules
 
 ## BankTransfer (spec.yaml#/components/schemas/BankTransfer)
 (fragment): BankTransfer
-  method*: string
+  method*: "bank-transfer"
     - must be "bank-transfer"
   sortCode*: string
   accountNumber*: string
