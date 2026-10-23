@@ -187,6 +187,8 @@ public struct Field: Equatable, Sendable {
   public var isRequired: Bool
   /// Listed only to say it mustn't be there, as `name: false` or `name: {not: {}}`.
   public var isForbidden: Bool
+  /// The `if`/`then`/`else` and `dependentRequired` rules that require or forbid the field.
+  public var decidedBy: [Rule]
   public var node: SchemaNode
   /// The fragment the field is written in, when it's not the object's own, such as a base schema
   /// in an `allOf`.
@@ -196,18 +198,36 @@ public struct Field: Equatable, Sendable {
     name: String,
     isRequired: Bool,
     isForbidden: Bool = false,
+    decidedBy: [Rule] = [],
     node: SchemaNode,
     definedIn: FragmentRef? = nil
   ) {
     self.name = name
     self.isRequired = isRequired
     self.isForbidden = isForbidden
+    self.decidedBy = decidedBy
     self.node = node
     self.definedIn = definedIn
   }
 
+  /// Whether the field is required, optional or not allowed, or a rule decides.
+  public var presence: Presence {
+    if isForbidden { return .forbidden }
+    if isRequired { return .required }
+    return decidedBy.isEmpty ? .optional : .conditional
+  }
+
   /// The fragment the field's value is, if it's one.
   public var fragmentUsed: FragmentRef? { node.fragment }
+}
+
+/// Whether a field must, may or mustn't be there.
+public enum Presence: Equatable, Sendable {
+  case required
+  /// Optional unless a rule requires or forbids it.
+  case conditional
+  case optional
+  case forbidden
 }
 
 public struct ArraySchema: Equatable, Sendable {

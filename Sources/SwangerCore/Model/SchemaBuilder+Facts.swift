@@ -329,9 +329,11 @@ extension SchemaBuilder {
       constraintPhrases(isObject: isObject).map { Rule(.constraint, $0) }
     }
 
-    func dependencyRules() -> [Rule] {
+    /// Each `dependentRequired` entry as a rule, with the fields it requires.
+    func dependencies() -> [(rule: Rule, decides: [String])] {
       dependentRequired.filter { !$0.requires.isEmpty }.map { field, requires in
-        Rule(.dependency, "When \(Wording.code(field)) is present: \(Wording.required(requires))")
+        let text = "When \(Wording.code(field)) is present: \(Wording.required(requires))"
+        return (Rule(.dependency, text), requires)
       }
     }
 

@@ -55,6 +55,7 @@ struct DiagramView: View {
         if case .active(let location) = phase { pointer = location } else { pointer = nil }
       }
       .overlay(alignment: .bottomTrailing) { zoomControls }
+      .overlay(alignment: .bottomLeading) { DiagramKey() }
       .background(HostWindow.Reader(host: host))
       .onAppear {
         viewport = savedViewport ?? .initial
@@ -256,7 +257,7 @@ struct DiagramView: View {
   }
 }
 
-/// The lines from each open row to the card it opens.
+/// The lines from each open row to the card it opens, drawn in the row's ``LinkStyle``.
 private struct Connectors: View {
   let cards: [DiagramCard]
   let frames: [FieldPath: CGRect]
@@ -275,11 +276,11 @@ private struct Connectors: View {
         path.addCurve(
           to: end, control1: CGPoint(x: start.x + bend, y: start.y),
           control2: CGPoint(x: end.x - bend, y: end.y))
-        let color = color(for: card, from: cards[parent.card].rows[parent.row])
-        context.stroke(path, with: .color(color), lineWidth: 1.5)
-        context.fill(
-          Path(ellipseIn: CGRect(x: start.x - 3, y: start.y - 3, width: 6, height: 6)),
-          with: .color(color))
+        let row = cards[parent.card].rows[parent.row]
+        // Just outside the card, which would hide half of it.
+        LinkStyle(row).draw(
+          path, markAt: CGPoint(x: start.x + 6, y: start.y), in: context,
+          color: color(for: card, from: row))
       }
     }
   }

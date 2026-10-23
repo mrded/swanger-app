@@ -8,19 +8,38 @@ import OrderedJSON
 /// nested fields, choices) falls back to the condition's description or a generic phrase, which
 /// can't mislead.
 extension SchemaBuilder {
-  /// `present` holds the fields the object itself requires, which a condition can't find missing.
-  func conditionRules(_ conditions: [Facts.Condition], present: Set<String>) -> [Rule] {
+  /// With each rule, the fields its branches require or forbid, when they're worded. `present`
+  /// holds the fields the object itself requires, which a condition can't find missing.
+  func conditionRules(
+    _ conditions: [Facts.Condition], present: Set<String>
+  ) -> [(rule: Rule, decides: [String])] {
     conditions.map { condition in
-      var text = "When \(describe(condition.condition, present: present))"
-      // The value's own checks, such as "it's a number", needn't be said again by `then`.
-      let checked = Self.flatFacts(condition.condition, allowing: Self.valueChecks)?.types
-      let then = condition.then.flatMap { effects($0, branch: "then", checked: checked) }
-      text += ": \(then ?? "nothing more is needed")"
-      if let otherwise = condition.otherwise.flatMap({ effects($0, branch: "else") }) {
-        text += ". Otherwise: \(otherwise)"
-      }
-      return Rule(.condition, text)
+      (rule(for: condition, present: present), decidedFields(condition))
     }
+  }
+
+  private func rule(for condition: Facts.Condition, present: Set<String>) -> Rule {
+    var text = "When \(describe(condition.condition, present: present))"
+    // The value's own checks, such as "it's a number", needn't be said again by `then`.
+    let checked = Self.flatFacts(condition.condition, allowing: Self.valueChecks)?.types
+    let then = condition.then.flatMap { effects($0, branch: "then", checked: checked) }
+    text += ": \(then ?? "nothing more is needed")"
+    if let otherwise = condition.otherwise.flatMap({ effects($0, branch: "else") }) {
+      text += ". Otherwise: \(otherwise)"
+    }
+    return Rule(.condition, text)
+  }
+
+  /// The fields a `then` or `else` requires or forbids, from the flat shape ``effects`` words.
+  private func decidedFields(_ condition: Facts.Condition) -> [String] {
+    var names = OrderedSet<String>()
+    for branch in [condition.then, condition.otherwise].compactMap({ $0 }) {
+      guard let facts = Self.flatFacts(branch, allowing: ["properties", "required", "type"])
+      else { continue }
+      names.formUnion(facts.required)
+      names.formUnion(facts.properties.keys.filter(facts.forbidden.contains))
+    }
+    return Array(names)
   }
 
   /// The `if` schema as a condition: "`status` is "Rejected" and `reason` is present".

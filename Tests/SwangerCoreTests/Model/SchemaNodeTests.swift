@@ -444,6 +444,56 @@ import Testing
     #expect(schema.rules.map(\.text) == ["When `ship` is present: the `then` schema applies"])
   }
 
+  @Test func fieldsAConditionRequiresOrForbidsAreConditional() throws {
+    let schema = try node(
+      """
+      type: object
+      required: [kind]
+      properties: {kind: {type: string}, zip: {type: string}, box: {type: string}, note: {type: string}}
+      if: {properties: {kind: {const: parcel}}}
+      then: {required: [zip], properties: {zip: {maxLength: 8}}}
+      else: {properties: {box: false}}
+      """)
+    let object = try #require(schema.object)
+
+    #expect(object.fields.map(\.presence) == [.required, .conditional, .conditional, .optional])
+    #expect(object[field: "zip"]?.decidedBy == schema.rules.filter { $0.kind == .condition })
+  }
+
+  @Test func fieldADependencyRequiresIsConditional() throws {
+    let schema = try node(
+      "{type: object, properties: {a: {}, b: {}}, dependentRequired: {a: [b]}}")
+
+    #expect(schema.object?.fields.map(\.presence) == [.optional, .conditional])
+    #expect(schema.object?[field: "b"]?.decidedBy.map(\.kind) == [.dependency])
+  }
+
+  @Test func typeUnionsObjectVariantKeepsConditionalFields() throws {
+    let schema = try node(
+      """
+      type: [object, string]
+      properties: {kind: {}, zip: {}}
+      if: {properties: {kind: {const: parcel}}}
+      then: {required: [zip]}
+      """)
+    let object = try #require(schema.choice?.variants.first?.node.object)
+
+    #expect(object[field: "zip"]?.presence == .conditional)
+    #expect(object[field: "zip"]?.decidedBy == schema.rules.filter { $0.kind == .condition })
+  }
+
+  @Test func conditionThatFallsBackDecidesNoField() throws {
+    let schema = try node(
+      """
+      type: object
+      properties: {b: {}}
+      if: {required: [a]}
+      then: {allOf: [{required: [b]}]}
+      """)
+
+    #expect(schema.object?[field: "b"]?.presence == .optional)
+  }
+
   @Test func conditionWithADependencyFallsBack() throws {
     let schema = try node(
       "{type: object, if: {required: [a], dependentRequired: {b: [c]}}, then: {required: [d]}}")
