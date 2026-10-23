@@ -275,6 +275,9 @@ final class SchemaBuilder {
   private func merge(_ pieces: Pieces, location: NodeLocation) -> Built {
     var facts = Facts()
     for piece in pieces.list { facts.add(piece) }
+    if facts.types == nil, facts.allowed == nil {
+      facts.types = Self.conditionTypes(facts.conditions)
+    }
     let home = pieces.list.first(where: \.isOwn)?.definedIn
 
     // The node is a fragment when it reaches exactly one, and only tightens it.
