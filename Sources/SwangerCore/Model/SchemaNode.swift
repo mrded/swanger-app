@@ -102,7 +102,13 @@ public struct SchemaNode: Equatable, Sendable {
     switch kind {
     case .object: base = "object"
     case .array(let array): base = array.items.map { "array of \($0.typeDescription)" } ?? "array"
-    case .scalar(let scalar): base = scalar.types.isEmpty ? "any" : list(scalar.types, "or")
+    case .scalar(let scalar):
+      // A list of values to pick from; the values themselves are shown beside it.
+      if let values = scalar.allowedValues, values.count(where: { $0 != .null }) > 1 {
+        base = "enum"
+      } else {
+        base = scalar.types.isEmpty ? "any" : list(scalar.types, "or")
+      }
     case .choice(let choice):
       let mode = choice.mode == .oneOf ? "one of" : "any of"
       base = "\(mode) \(list(choice.variants.map(\.name), "or"))"
