@@ -29,8 +29,10 @@ rare combination of keywords.
 - subtract types with `not: {type: …}`. That's a rule ("mustn't be null"), not a narrower `type`.
 - merge `items` into the `prefixItems` positions of other `allOf` members. Each tuple position shows its
   own `prefixItems`.
-- word conditions beyond the flat shape. An `if` is worded only when it checks fields' `const`, `enum`,
-  `type` or presence, and a `then`/`else` only when it requires, forbids or limits fields directly.
+- word conditions beyond the flat shape. An `if` is worded only when it checks the value's or fields'
+  `const`, `enum`, `type` or presence, and a `then`/`else` only when it limits the value, or requires,
+  forbids or limits fields directly. A schema with no `type` takes one from an `if` only when both
+  branches limit the value's type.
   Anything else (`$ref`, `allOf`, nested fields, choices, dependencies) falls back to the condition's
   description, "the `if` schema matches" or "the `then` schema applies".
 - apply `patternProperties` or an `additionalProperties` schema to named fields. Only

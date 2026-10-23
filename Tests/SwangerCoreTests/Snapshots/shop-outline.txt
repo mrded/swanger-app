@@ -24,7 +24,7 @@ example (mediaType "Paid by card"): {"customer": {"name": "Ada", "email": "ada@e
     town: string
     postcode*: Postcode
       - must match `^[A-Z0-9 ]{5,8}$`
-    country: string [default "GB"]
+    country: enum [default "GB"]
       - must be one of "GB" or "IE"
   billingAddress: Address [tightened]
     line1*: string
@@ -33,7 +33,7 @@ example (mediaType "Paid by card"): {"customer": {"name": "Ada", "email": "ada@e
     town*: string
     postcode*: Postcode
       - must match `^[A-Z0-9 ]{5,8}$`
-    country: string [default "GB"]
+    country: enum [default "GB"]
       - must be one of "GB" or "IE"
   giftMessage: string
     - allows at most 140 characters
@@ -44,7 +44,7 @@ used by: PUT /orders/{id}/status [application/json]
 stats: 2 fields, 0 fragments, 3 rules
 (root): object
   - When `status` is "Rejected": `reason` is required. Otherwise: `reason` isn't allowed
-  status*: string
+  status*: enum
     - must be one of "Accepted" or "Rejected"
   reason: string
     - allows at most 200 characters
@@ -71,7 +71,7 @@ stats: 39 fields, 9 fragments, 28 rules
     town: string
     postcode*: Postcode
       - must match `^[A-Z0-9 ]{5,8}$`
-    country: string [default "GB"]
+    country: enum [default "GB"]
       - must be one of "GB" or "IE"
   billingAddress: Address [tightened, from NewOrder]
     line1*: string
@@ -80,14 +80,14 @@ stats: 39 fields, 9 fragments, 28 rules
     town*: string
     postcode*: Postcode
       - must match `^[A-Z0-9 ]{5,8}$`
-    country: string [default "GB"]
+    country: enum [default "GB"]
       - must be one of "GB" or "IE"
   giftMessage: string [from NewOrder]
     - allows at most 140 characters
   giftWrap: boolean [from NewOrder, default false]
   id*: string [read only]
     - must be a UUID
-  status*: string
+  status*: enum
     - must be one of "Pending", "Accepted" or "Rejected"
 
 ## createOrder 400 response
@@ -123,7 +123,7 @@ stats: 2 fields, 1 fragments, 0 rules
     town: string
     postcode*: Postcode
       - must match `^[A-Z0-9 ]{5,8}$`
-    country: string [default "GB"]
+    country: enum [default "GB"]
       - must be one of "GB" or "IE"
   billingAddress: Address [tightened]
     line1*: string
@@ -132,7 +132,7 @@ stats: 2 fields, 1 fragments, 0 rules
     town*: string
     postcode*: Postcode
       - must match `^[A-Z0-9 ]{5,8}$`
-    country: string [default "GB"]
+    country: enum [default "GB"]
       - must be one of "GB" or "IE"
   giftMessage: string
     - allows at most 140 characters
@@ -156,7 +156,7 @@ stats: 2 fields, 1 fragments, 0 rules
   town: string
   postcode: Postcode
     - must match `^[A-Z0-9 ]{5,8}$`
-  country: string [default "GB"]
+  country: enum [default "GB"]
     - must be one of "GB" or "IE"
 
 ## Postcode (address.yaml#/$defs/Postcode)
@@ -175,7 +175,7 @@ stats: 2 fields, 1 fragments, 0 rules
 (fragment): Money
   amount*: number
     - must be more than 0
-  currency*: string
+  currency*: enum
     - must be one of "GBP" or "EUR"
 
 ## Payment (spec.yaml#/components/schemas/Payment)
@@ -220,7 +220,7 @@ stats: 2 fields, 1 fragments, 0 rules
     town: string
     postcode*: Postcode
       - must match `^[A-Z0-9 ]{5,8}$`
-    country: string [default "GB"]
+    country: enum [default "GB"]
       - must be one of "GB" or "IE"
   billingAddress: Address [tightened, from NewOrder]
     line1*: string
@@ -229,14 +229,14 @@ stats: 2 fields, 1 fragments, 0 rules
     town*: string
     postcode*: Postcode
       - must match `^[A-Z0-9 ]{5,8}$`
-    country: string [default "GB"]
+    country: enum [default "GB"]
       - must be one of "GB" or "IE"
   giftMessage: string [from NewOrder]
     - allows at most 140 characters
   giftWrap: boolean [from NewOrder, default false]
   id*: string [read only]
     - must be a UUID
-  status*: string
+  status*: enum
     - must be one of "Pending", "Accepted" or "Rejected"
 
 ## Category (spec.yaml#/components/schemas/Category)
