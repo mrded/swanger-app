@@ -33,6 +33,23 @@ It's a native SwiftUI app for macOS 15 Sequoia and later.
 > Searching for "swanger"? Search engines tend to correct it to "swagger". Look for "Swanger OpenAPI schema
 > viewer for macOS".
 
+## Why Swanger
+
+I specialise in API design and development, so I work extensively with OpenAPI specifications.
+
+While designing complex API resources, I struggled to find a good way to visualise their structure in a way
+that would make it easy to discuss, review, and brainstorm with a team.
+
+Existing OpenAPI documentation tools don't handle complex OpenAPI 3.1 schemas particularly well, especially
+those involving conditional logic. The resulting documentation is often difficult to read and even harder to
+reason about.
+
+I wanted something that would make complex schemas easier to understand, explore, and discuss
+collaboratively.
+
+That's why I built Swanger — a different way to visualise OpenAPI specifications, with a focus on clarity and
+making complex API designs easier to work with.
+
 ## What the diagram is (and isn't)
 
 The diagram and its plain-English rules show what the spec **says**. Whether a payload is valid is decided
