@@ -317,10 +317,12 @@ final class SchemaBuilder {
     if kind != .never {
       let isUnion = Self.typeGroups(facts.types?.filter { $0 != "null" } ?? []).count > 1
       let general = isUnion ? facts.typeIndependent : facts.applicable
+      let decisions =
+        conditionRules(facts.conditions, present: Set(facts.required)) + general.dependencies()
       node.rules =
         general.constraintRules(isObject: node.object != nil) + choiceRules
-        + conditionRules(facts.conditions, present: Set(facts.required))
-        + general.dependencyRules()
+        + decisions.map(\.rule)
+      node.markDecidedFields(decisions)
     }
     return Built(node: node, escapes: escapes)
   }
@@ -381,8 +383,10 @@ final class SchemaBuilder {
           narrowed, home: home, location: location, escapes: &escapes, choiceRules: &unused,
           extraChoices: &none)
         var node = SchemaNode(kind: kind, location: location)
+        let dependencies = narrowed.dependencies()
         node.rules =
-          narrowed.constraintRules(isObject: node.object != nil) + narrowed.dependencyRules()
+          narrowed.constraintRules(isObject: node.object != nil) + dependencies.map(\.rule)
+        node.markDecidedFields(dependencies)
         return Variant(name: node.shapeDescription, discriminatorValue: nil, node: node)
       }
       return .choice(ChoiceSchema(mode: .oneOf, discriminator: nil, variants: variants))
@@ -732,5 +736,18 @@ final class SchemaBuilder {
       node.isReadOnly = node.isReadOnly || isReadOnly
       node.isWriteOnly = node.isWriteOnly || isWriteOnly
     }
+  }
+}
+
+extension SchemaNode {
+  /// Links each of the object's fields to the rules that require or forbid it.
+  fileprivate mutating func markDecidedFields(_ decisions: [(rule: Rule, decides: [String])]) {
+    guard case .object(var object) = kind else { return }
+    for (rule, names) in decisions {
+      for index in object.fields.indices where names.contains(object.fields[index].name) {
+        object.fields[index].decidedBy.append(rule)
+      }
+    }
+    kind = .object(object)
   }
 }

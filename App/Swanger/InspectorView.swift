@@ -80,9 +80,16 @@ private struct FieldDetails: View {
         }
         if let field {
           LabeledContent("Presence") {
-            Text(field.isForbidden ? "Not allowed" : field.isRequired ? "Required" : "Optional")
-              .foregroundStyle(
-                field.isRequired && !field.isForbidden ? Color.swangerTeal : .primary)
+            HStack(spacing: 6) {
+              DiagramMarkView(mark: DiagramMark(field.presence))
+              Text(presence(field.presence))
+                .foregroundStyle(field.presence == .required ? Color.swangerTeal : .primary)
+            }
+          }
+          if field.presence == .conditional {
+            ForEach(Array(field.decidedBy.enumerated()), id: \.offset) { _, rule in
+              Text(markdown: rule.text).foregroundStyle(Color.swangerAmber)
+            }
           }
         }
         if !flags.isEmpty { LabeledContent("Also", value: flags.joined(separator: ", ")) }
@@ -121,6 +128,15 @@ private struct FieldDetails: View {
     case .otherFields: "Other fields"
     case .patternField(let pattern): "/\(pattern)/"
     case nil: "Schema"
+    }
+  }
+
+  private func presence(_ presence: Presence) -> String {
+    switch presence {
+    case .required: "Required"
+    case .conditional: "Depends on a rule"
+    case .optional: "Optional"
+    case .forbidden: "Not allowed"
     }
   }
 

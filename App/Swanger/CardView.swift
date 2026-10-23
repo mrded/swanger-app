@@ -119,8 +119,9 @@ private struct RowView: View {
           .foregroundStyle(Color.swangerAmber)
       } else {
         Text(row.label)
-          .strikethrough(isForbidden)
-          .fontWeight(isRequired ? .semibold : .regular)
+          .strikethrough(presence == .forbidden)
+          .fontWeight(presence == .required ? .semibold : .regular)
+          .foregroundStyle(presence == .forbidden ? .secondary : .primary)
           .lineLimit(1)
           .layoutPriority(1)
         Spacer(minLength: 8)
@@ -147,8 +148,7 @@ private struct RowView: View {
     if case .field(let field) = row.kind { field } else { nil }
   }
 
-  private var isRequired: Bool { field?.isRequired == true }
-  private var isForbidden: Bool { field?.isForbidden == true }
+  private var presence: Presence? { field?.presence }
 
   private var accent: Color {
     if case .variant = row.kind { return .swangerAmber }
@@ -161,13 +161,7 @@ private struct RowView: View {
   }
 
   @ViewBuilder private var marker: some View {
-    if isRequired && !isForbidden {
-      Circle().fill(Color.swangerTeal).frame(width: 6, height: 6)
-        .accessibilityLabel("Required")
-    } else if case .variant = row.kind {
-      Image(systemName: "arrow.turn.down.right").font(.caption2)
-        .foregroundStyle(Color.swangerAmber)
-    }
+    if let mark = DiagramMark(row) { DiagramMarkView(mark: mark) }
   }
 
   @ViewBuilder private var background: some View {
@@ -183,7 +177,8 @@ private struct RowView: View {
   private var help: String {
     var lines: [String] = []
     if let field {
-      lines.append(field.isForbidden ? "Not allowed" : field.isRequired ? "Required" : "Optional")
+      lines.append(DiagramMark(field.presence).meaning)
+      if field.presence == .conditional { lines += field.decidedBy.map(\.text) }
       if let definedIn = field.definedIn { lines.append("From \(definedIn.name)") }
     }
     if let description = row.node?.description { lines.append(description) }
