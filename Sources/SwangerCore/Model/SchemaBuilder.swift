@@ -740,14 +740,25 @@ final class SchemaBuilder {
 }
 
 extension SchemaNode {
-  /// Links each of the object's fields to the rules that require or forbid it.
+  /// Links each of the object's fields to the rules that require or forbid it. The rules apply
+  /// to the whole value, so they reach the objects among a choice's variants too, such as the
+  /// object of `type: [object, string]`.
   fileprivate mutating func markDecidedFields(_ decisions: [(rule: Rule, decides: [String])]) {
-    guard case .object(var object) = kind else { return }
-    for (rule, names) in decisions {
-      for index in object.fields.indices where names.contains(object.fields[index].name) {
-        object.fields[index].decidedBy.append(rule)
+    switch kind {
+    case .object(var object):
+      for (rule, names) in decisions {
+        for index in object.fields.indices where names.contains(object.fields[index].name) {
+          object.fields[index].decidedBy.append(rule)
+        }
       }
+      kind = .object(object)
+    case .choice(var choice):
+      for index in choice.variants.indices {
+        choice.variants[index].node.markDecidedFields(decisions)
+      }
+      kind = .choice(choice)
+    case .array, .scalar, .recursive, .unresolved, .never:
+      break
     }
-    kind = .object(object)
   }
 }

@@ -468,6 +468,20 @@ import Testing
     #expect(schema.object?[field: "b"]?.decidedBy.map(\.kind) == [.dependency])
   }
 
+  @Test func typeUnionsObjectVariantKeepsConditionalFields() throws {
+    let schema = try node(
+      """
+      type: [object, string]
+      properties: {kind: {}, zip: {}}
+      if: {properties: {kind: {const: parcel}}}
+      then: {required: [zip]}
+      """)
+    let object = try #require(schema.choice?.variants.first?.node.object)
+
+    #expect(object[field: "zip"]?.presence == .conditional)
+    #expect(object[field: "zip"]?.decidedBy == schema.rules.filter { $0.kind == .condition })
+  }
+
   @Test func conditionThatFallsBackDecidesNoField() throws {
     let schema = try node(
       """
