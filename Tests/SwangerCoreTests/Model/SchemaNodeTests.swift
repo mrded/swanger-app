@@ -460,6 +460,55 @@ import Testing
     #expect(schema.rules.map(\.text) == ["When the `if` schema matches: `x` is required"])
   }
 
+  @Test func conditionOnTheValueItselfIsWorded() throws {
+    let schema = try node(
+      """
+      if: {type: number}
+      then: {type: number, exclusiveMinimum: 0}
+      else: {enum: [null, '']}
+      """)
+
+    #expect(
+      schema.rules.map(\.text) == [
+        #"When it's a number: must be more than 0. Otherwise: must be one of null or """#
+      ])
+  }
+
+  @Test(arguments: [
+    ("{if: {const: x}, then: {maxLength: 1}}", #"When it's "x": allows at most 1 character"#),
+    (
+      "{if: {enum: [a, b]}, then: {type: string}}",
+      #"When it's one of "a" or "b": must be a string"#
+    ),
+    ("{if: {type: string}, then: {type: integer}}", "When it's a string: must be an integer"),
+  ])
+  func valueConditionsAreWorded(schema: String, rule: String) throws {
+    #expect(try node(schema).rules.map(\.text) == [rule])
+  }
+
+  @Test(arguments: [
+    // Each branch limits the type, so a valid value is one of them.
+    (
+      "{if: {type: number}, then: {type: number}, else: {enum: [null, '']}}",
+      "number or string or null"
+    ),
+    ("{if: {type: string}, then: {const: 1}, else: {type: number}}", "number"),
+    ("{if: {type: string}, then: {not: {}}, else: {type: boolean}}", "boolean"),
+    // A branch that doesn't limit the type, or is missing, allows anything.
+    ("{if: {type: number}, then: {type: number}}", "any"),
+    ("{if: {type: number}, then: {type: number}, else: {maxLength: 2}}", "any"),
+    (
+      "{if: {type: number}, then: {type: number}, else: {$ref: '#/components/schemas/S'}}",
+      "any"
+    ),
+    // A `type` or allowed values of its own say more.
+    ("{type: string, if: {minLength: 1}, then: {type: string}, else: {type: number}}", "string"),
+    ("{enum: [1], if: {type: number}, then: {type: number}, else: {type: string}}", "integer"),
+  ])
+  func typeComesFromConditionBranches(schema: String, type: String) throws {
+    #expect(try node(schema).shapeDescription == type)
+  }
+
   @Test func conditionFallsBackToItsDescription() throws {
     let schema = try node(
       "{type: object, if: {description: the order is international, minProperties: 3}, then: {required: [customs]}}"

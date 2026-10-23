@@ -43,6 +43,8 @@ import Testing
     #"{"anyOf":[{"required":["a"]},{"required":["b"]}]}"#,
     #"{"oneOf":[{"properties":{"k":{"const":"c"}},"required":["k"]},{"properties":{"k":{"const":"d"}},"required":["k"]}]}"#,
     #"{"if":{"properties":{"a":{"const":1}}},"then":{"required":["b"]},"else":{"required":["c"]}}"#,
+    #"{"if":{"type":"number"},"then":{"type":"number","minimum":1},"else":{"enum":["x",null]}}"#,
+    #"{"if":{"type":"string"},"then":{"const":"y"},"else":{"type":["object","integer"]}}"#,
     #"{"maxLength":2}"#,
     #"{"minItems":1}"#,
     "true",
