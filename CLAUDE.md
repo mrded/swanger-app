@@ -51,7 +51,7 @@ The codebase is split into three layers:
 
 ## Code style
 
-Formatted with `swift-format` and the `.swift-format` config at the repo root. Run `make format` before opening a PR; CI runs `make lint` (strict).
+Formatted with `swift-format` and the `.swift-format` config at the repo root. Run `make format` after every code change to Swift files — `swift-format` is strict about indentation and line breaks inside `#if` blocks and similar constructs that are easy to get wrong by hand. CI fails on any formatting error. Use `make lint` to check without modifying.
 
 ## App Store release process
 
