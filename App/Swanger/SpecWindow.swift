@@ -27,18 +27,18 @@ struct SpecWindow: View {
   @ViewBuilder private var content: some View {
     if let spec = store.spec {
       #if APPSTORE
-      if !spec.referencedFiles.isEmpty {
-        ContentUnavailableView(
-          "Spec not supported",
-          systemImage: "doc.badge.ellipsis",
-          description: Text(
-            "This spec references external files, which isn't supported in the Mac App Store version of Swanger. Consolidate your spec into a single file to use it here."
-          ))
-      } else {
-        specContent(spec: spec)
-      }
+        if !spec.referencedFiles.isEmpty {
+          ContentUnavailableView(
+            "Spec not supported",
+            systemImage: "doc.badge.ellipsis",
+            description: Text(
+              "This spec references external files, which isn't supported in the Mac App Store version of Swanger. Consolidate your spec into a single file to use it here."
+            ))
+        } else {
+          specContent(spec: spec)
+        }
       #else
-      specContent(spec: spec)
+        specContent(spec: spec)
       #endif
     } else if let error = store.loadError {
       LoadErrorView(error: error, isLoading: store.isLoading) { store.reload() }
