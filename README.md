@@ -65,14 +65,27 @@ Early development. Known issues and ideas are in [`docs/backlog/`](docs/backlog)
 
 ## Installing
 
-Swanger needs macOS 15 (Sequoia) or later. Download `Swanger-<version>.dmg` (or `.zip`) from the
+Swanger needs macOS 15 (Sequoia) or later. There are two versions:
+
+| | Mac App Store | Direct download (GitHub) |
+|---|---|---|
+| Multi-file specs (`$ref` to external files) | ✗ | ✓ |
+| Live reload when the file changes on disk | ✗ | ✓ |
+| Signed and opens without a security prompt | ✓ | ✗ |
+
+**Mac App Store** — the App Store requires apps to run in a sandbox, which limits what files Swanger
+can read. It supports specs where all definitions are in a single file. Specs that reference external
+files show a "not supported" message instead of the diagram.
+
+**Direct download (GitHub)** — not sandboxed, so it supports all specs, including multi-file ones,
+and reloads automatically when the file changes. Not signed with a Developer ID, so macOS will block
+it the first time you open it. Download `Swanger-<version>.dmg` (or `.zip`) from the
 [latest release](https://github.com/mrded/swanger-app/releases/latest) and drag `Swanger.app` into
 **Applications**.
 
-Releases aren't notarised by Apple yet, so macOS blocks Swanger the first time you open it ("Apple could not
-verify…"). Click **Done**, then open **System Settings › Privacy & Security**, scroll down to the message
-about Swanger and click **Open Anyway**. You only need to do this once. Or remove the quarantine flag
-instead:
+To open it the first time: click **Done** on the security warning, then open
+**System Settings › Privacy & Security**, scroll down to the message about Swanger and click
+**Open Anyway**. You only need to do this once. Or remove the quarantine flag instead:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Swanger.app
