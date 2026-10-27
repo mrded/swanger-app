@@ -48,7 +48,7 @@
       <a class="button" href="https://github.com/mrded/swanger-app/releases/latest">Download for macOS</a>
       <a class="button secondary" href="https://github.com/mrded/swanger-app">Source on GitHub</a>
     </p>
-    <p class="fine">Free and open source (MIT). Needs macOS 15 Sequoia or later.</p>
+    <p class="fine">Free and open source (MIT). Needs macOS 15 Sequoia or later. Also on the <a href="#install">Mac App Store</a>.</p>
   </header>
 
   <main>
@@ -107,6 +107,20 @@
 
     <section class="install" id="install">
       <h2>Installing</h2>
+      <p>Two versions are available for macOS 15 Sequoia or later:</p>
+      <h3>Mac App Store</h3>
+      <p>
+        The App Store requires apps to run in a sandbox, which limits what files Swanger can read.
+        It supports specs where all definitions are in a single file. Specs that reference external
+        files show a "not supported" message instead of the diagram. Signed and opens without any
+        security prompts.
+      </p>
+      <h3>Direct download (GitHub)</h3>
+      <p>
+        Not sandboxed, so it supports all specs, including multi-file ones, and reloads automatically
+        when the file changes on disk. Not signed with a Developer ID, so macOS will block it the
+        first time you open it.
+      </p>
       <ol>
         <li>
           Download <code>Swanger-&lt;version&gt;.dmg</code> from the
@@ -114,9 +128,9 @@
           and drag <strong>Swanger.app</strong> into <strong>Applications</strong>.
         </li>
         <li>
-          Apple hasn't notarised releases yet, so macOS blocks Swanger the first time you open it.
-          Click <strong>Done</strong>, then open <strong>System Settings › Privacy &amp; Security</strong>,
-          scroll down to the message about Swanger and click <strong>Open Anyway</strong>. You only need to do this once.
+          Click <strong>Done</strong> on the security warning, then open
+          <strong>System Settings › Privacy &amp; Security</strong>, scroll down to the message about
+          Swanger and click <strong>Open Anyway</strong>. You only need to do this once.
         </li>
       </ol>
       <p>Or remove the quarantine flag in Terminal instead:</p>
