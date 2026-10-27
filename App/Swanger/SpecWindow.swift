@@ -27,7 +27,7 @@ struct SpecWindow: View {
   @ViewBuilder private var content: some View {
     if let spec = store.spec {
       #if APPSTORE
-        if !spec.referencedFiles.isEmpty {
+        if spec.referencedFiles.contains(where: { $0 != url.absoluteURL.standardizedFileURL }) {
           ContentUnavailableView(
             "Spec not supported",
             systemImage: "doc.badge.ellipsis",
