@@ -53,6 +53,30 @@ The codebase is split into three layers:
 
 Formatted with `swift-format` and the `.swift-format` config at the repo root. Run `make format` before opening a PR; CI runs `make lint` (strict).
 
+## App Store release process
+
+The App Store build uses a separate Xcode configuration and bundle ID (`ltd.quux.swanger`) from the standalone GitHub build (`io.github.mrded.swanger`).
+
+**To submit a new version to the App Store:**
+
+```sh
+git tag v0.4.0 && git push origin v0.4.0   # tag the release on GitHub as normal
+make version                                 # syncs MARKETING_VERSION in Xcode from the tag
+```
+
+Then in Xcode:
+1. Select the **Swanger AppStore** scheme in the toolbar
+2. **Product → Archive** (destination: Any Mac)
+3. Organizer opens → **Distribute App → App Store Connect → Upload**
+4. Click through the options, confirm bundle ID is `ltd.quux.swanger` → **Upload**
+
+Also increment the **Build** number (`CURRENT_PROJECT_VERSION`) in the target's General tab each time you upload — Apple requires it to be unique per submission even if the version is the same.
+
+**Key differences from the standalone build (`#if APPSTORE`):**
+- File watching disabled (`DispatchSource` not set up)
+- Specs with external file `$ref`s show "Spec not supported" instead of the diagram
+- Sandboxed (`App/Swanger-AppStore.entitlements`): `app-sandbox` + `user-selected.read-only`
+
 ## Known issues / deferred work
 
 `docs/backlog/` has one file per known issue. Read the relevant item before touching an area it covers (e.g. `large-recursive-groups-hang-the-model.md`, `model-ignores-some-keywords.md`).
