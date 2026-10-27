@@ -10,7 +10,7 @@ FORMAT_PATHS := Package.swift Sources Tests App/Swanger App/SwangerUITests
 SPEC ?= Tests/SwangerValidationTests/Fixtures/payments/spec.yaml
 
 .DEFAULT_GOAL := help
-.PHONY: help check test real-world ui-test lint format build run release site xcode clean
+.PHONY: help check test real-world ui-test lint format build run release site xcode clean version
 
 help: ## List the commands
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z-]+:.*## / { printf "  make %-8s %s\n", $$1, $$2 }' \
@@ -53,6 +53,11 @@ site: ## Assemble the website at build/site, with the README's screenshots
 	cp -R site/. build/site/
 	cp docs/screenshots/*.png build/site/screenshots/
 	@echo "build/site (preview: python3 -m http.server -d build/site)"
+
+version: ## Sync MARKETING_VERSION in the Xcode project from the latest git tag (e.g. v0.3.0 → 0.3.0)
+	@v=$$(git describe --tags --abbrev=0 | sed 's/^v//') && \
+		sed -i '' "s/MARKETING_VERSION = .*;/MARKETING_VERSION = $$v;/g" $(PROJECT)/project.pbxproj && \
+		echo "Version set to $$v"
 
 xcode: ## Open the project in Xcode
 	open $(PROJECT)

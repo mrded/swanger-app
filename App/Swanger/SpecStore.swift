@@ -100,7 +100,9 @@ final class SpecStore {
     case .failure(let error):
       loadError = error
     }
-    watch(spec?.referencedFiles ?? [], readSince: started)
+    #if !APPSTORE
+      watch(spec?.referencedFiles ?? [], readSince: started)
+    #endif
   }
 
   /// Watches the spec and `files`, replacing the watcher only when the list changes. A new watcher
