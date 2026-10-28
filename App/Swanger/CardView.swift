@@ -9,6 +9,8 @@ struct CardView: View {
   let selection: FieldPath?
   let highlight: FieldPath?
   let selectRow: (CardRow) -> Void
+  /// Told the row under the pointer, by its position, or `nil` when it leaves the card's rows.
+  let hoverRow: (Int?) -> Void
   let openOnItsOwn: () -> Void
 
   /// The rule under the pointer, by its position in the card's rules.
@@ -38,6 +40,7 @@ struct CardView: View {
       }
       footer
     }
+    .onChange(of: hoveredRow) { _, row in hoverRow(row) }
     .frame(width: DiagramMetrics.cardWidth, alignment: .leading)
     .background(.background, in: shape)
     .overlay { shape.strokeBorder(accent.opacity(0.55), lineWidth: card.style == .top ? 1.5 : 1) }
@@ -240,7 +243,6 @@ private struct RowView: View {
     .frame(height: DiagramMetrics.rowHeight)
     .background(background)
     .contentShape(Rectangle())
-    .help(help)
   }
 
   private var field: Field? {
@@ -273,16 +275,5 @@ private struct RowView: View {
     } else {
       Color.clear
     }
-  }
-
-  private var help: String {
-    var lines: [String] = []
-    if let field {
-      lines.append(DiagramMark(field.presence).meaning)
-      if field.presence == .conditional { lines += field.decidedBy.map(\.text) }
-      if let definedIn = field.definedIn { lines.append("From \(definedIn.name)") }
-    }
-    if let description = row.node?.description { lines.append(description) }
-    return lines.joined(separator: "\n")
   }
 }
