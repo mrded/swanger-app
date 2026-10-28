@@ -29,6 +29,10 @@ struct DiagramView: View {
   @State private var pointer: CGPoint?
   @State private var scrollMonitor: Any?
   @State private var host = HostWindow()
+  /// The row under the pointer, and the one whose ``RowInfo`` is shown once it has rested there.
+  @State private var hoveredRow: RowSpot?
+  @State private var infoRow: RowSpot?
+  @State private var infoSize = CGSize.zero
 
   private static let scales: ClosedRange<CGFloat> = 0.2...3
 
@@ -45,6 +49,7 @@ struct DiagramView: View {
           .scaleEffect(viewport.scale, anchor: .topLeading)
           .offset(viewport.offset)
       }
+      .overlay(alignment: .topLeading) { rowInfo }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .clipped()
       .background(DiagramBackground())
@@ -69,6 +74,7 @@ struct DiagramView: View {
       .onChange(of: viewport) { _, viewport in viewportChanged(viewport) }
       .onChange(of: cardFrames) { revealRow() }
       .onChange(of: reveal) { revealRow() }
+      .task(id: hoveredRow) { await showInfo(for: hoveredRow) }
   }
 
   private var content: some View {
@@ -77,6 +83,7 @@ struct DiagramView: View {
         CardView(
           card: card, openRows: state.openRows, selection: state.selection,
           highlight: state.highlight, selectRow: selectRow,
+          hoverRow: { row in hover(row, in: card) },
           openOnItsOwn: { openOnItsOwn(card) }
         )
         .layoutValue(key: CardSlot.self, value: (card.depth, card.parent))
@@ -91,6 +98,58 @@ struct DiagramView: View {
           .onChange(of: frames) { _, frames in cardFrames = frames }
       }
     }
+  }
+
+  // MARK: - Row info
+
+  private func hover(_ row: Int?, in card: DiagramCard) {
+    if let row, card.rows.indices.contains(row), !card.rows[row].isHeading {
+      hoveredRow = RowSpot(card: card.id, row: row)
+    } else if hoveredRow?.card == card.id {
+      // Only when the pointer leaves this card's rows, not when it's entered another card's.
+      hoveredRow = nil
+    }
+  }
+
+  /// Shows the info for `spot` once the pointer has rested on it, or at once when another row's
+  /// is already shown, and hides it shortly after the pointer leaves, so moving between rows
+  /// doesn't flicker.
+  private func showInfo(for spot: RowSpot?) async {
+    let delay: Duration =
+      spot == nil ? .milliseconds(150) : infoRow == nil ? .milliseconds(500) : .zero
+    if delay > .zero {
+      try? await Task.sleep(for: delay)
+      guard !Task.isCancelled else { return }
+    }
+    infoRow = spot
+  }
+
+  @ViewBuilder private var rowInfo: some View {
+    if let infoRow, dragStart == nil, pinchStart == nil,
+      let card = cards.first(where: { $0.id == infoRow.card }),
+      card.rows.indices.contains(infoRow.row), let frame = cardFrames[card.id]
+    {
+      RowInfo(row: card.rows[infoRow.row])
+        .onGeometryChange(for: CGSize.self, of: \.size) { infoSize = $0 }
+        .offset(infoOffset(beside: frame, row: infoRow.row))
+        .allowsHitTesting(false)
+        .transition(.opacity)
+    }
+  }
+
+  /// Where the info goes in the view: right of the row's card, or left of it when there's no room
+  /// on the right, and kept within the view, over the card when neither side has room.
+  private func infoOffset(beside frame: CGRect, row: Int) -> CGSize {
+    let gap: CGFloat = 8
+    let margin: CGFloat = 8
+    let right = viewport.offset.width + frame.maxX * viewport.scale + gap
+    let left = viewport.offset.width + frame.minX * viewport.scale - gap - RowInfo.width
+    let side = right + RowInfo.width + margin <= viewSize.width || left < margin ? right : left
+    let x = max(margin, min(side, viewSize.width - RowInfo.width - margin))
+    let rowTop = frame.minY + DiagramMetrics.rowMiddle(row) - DiagramMetrics.rowHeight / 2
+    let y = viewport.offset.height + rowTop * viewport.scale
+    return CGSize(
+      width: x, height: max(margin, min(y, viewSize.height - infoSize.height - margin)))
   }
 
   // MARK: - Panning and zooming
@@ -226,6 +285,12 @@ struct DiagramView: View {
     }
     return true
   }
+}
+
+/// A row of a card: the card's path and the row's position in it.
+private struct RowSpot: Equatable {
+  let card: FieldPath
+  let row: Int
 }
 
 /// The window a view is in, held weakly so the view doesn't keep it alive.
