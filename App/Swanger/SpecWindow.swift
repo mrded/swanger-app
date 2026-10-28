@@ -6,7 +6,6 @@ import SwiftUI
 struct SpecWindow: View {
   let url: URL
   @State private var store: SpecStore
-  @State private var showsInspector = false
 
   init(url: URL) {
     self.url = url
@@ -60,7 +59,7 @@ struct SpecWindow: View {
           }
         }
     }
-    .inspector(isPresented: $showsInspector) {
+    .inspector(isPresented: $store.showsInspector) {
       InspectorView(spec: spec, store: store)
         .inspectorColumnWidth(min: 240, ideal: 300)
     }
@@ -96,11 +95,11 @@ struct SpecWindow: View {
       }
       ToolbarItem {
         Button {
-          showsInspector.toggle()
+          store.showsInspector.toggle()
         } label: {
           Label("Inspector", systemImage: "sidebar.trailing")
         }
-        .help(showsInspector ? "Hide the inspector" : "Show the inspector")
+        .help(store.showsInspector ? "Hide the inspector" : "Show the inspector")
       }
     }
   }

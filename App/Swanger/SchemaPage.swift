@@ -42,7 +42,9 @@ struct SchemaPage: View {
       restoreCount: store.restoreCount, reveal: store.pendingReveal,
       didReveal: store.revealed,
       viewportChanged: { store.liveViewport = $0 },
-      selectRow: select, openOnItsOwn: openOnItsOwn, clearSelection: { store.select(nil) }
+      selectRow: select, showsInspector: store.showsInspector,
+      toggleInspector: toggleInspector, openOnItsOwn: openOnItsOwn,
+      clearSelection: { store.select(nil) }
     )
   }
 
@@ -99,6 +101,13 @@ struct SchemaPage: View {
       }
       diagram.selection = path
     }
+  }
+
+  /// Selects the row, without opening or closing its card, and shows or hides the inspector.
+  private func toggleInspector(for row: CardRow) {
+    guard let path = row.path else { return }
+    if !store.showsInspector { store.select(path) }
+    store.showsInspector.toggle()
   }
 
   /// A fragment opens its own page; any other card is shown alone.

@@ -1,3 +1,4 @@
+import AppKit
 import SwangerCore
 import SwiftUI
 
@@ -9,6 +10,9 @@ struct CardView: View {
   let selection: FieldPath?
   let highlight: FieldPath?
   let selectRow: (CardRow) -> Void
+  /// Whether the window shows the inspector, for the rows' context menu.
+  let showsInspector: Bool
+  let toggleInspector: (CardRow) -> Void
   /// Told the row under the pointer, by its position, or `nil` when it leaves the card's rows.
   let hoverRow: (Int?) -> Void
   let openOnItsOwn: () -> Void
@@ -30,6 +34,7 @@ struct CardView: View {
           isRuled: ruled.contains(row.id)
         )
         .onTapGesture { selectRow(row) }
+        .contextMenu { menu(for: row) }
         .onHover { hovering in
           if hovering {
             hoveredRow = row.id
@@ -55,6 +60,22 @@ struct CardView: View {
       }
     }
     .anchorPreference(key: CardBounds.self, value: .bounds) { [card.id: $0] }
+  }
+
+  @ViewBuilder private func menu(for row: CardRow) -> some View {
+    if let path = row.path {
+      if case .field(let field) = row.kind {
+        Button("Copy Field Name") { copy(field.name) }
+      }
+      Button("Copy Path") { copy(path.description) }
+      Divider()
+      Button(showsInspector ? "Hide Inspector" : "Show in Inspector") { toggleInspector(row) }
+    }
+  }
+
+  private func copy(_ text: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
   }
 
   /// The rows whose fields the hovered rule names, in order.

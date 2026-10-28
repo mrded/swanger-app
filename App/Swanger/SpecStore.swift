@@ -30,6 +30,8 @@ final class SpecStore {
   /// Counts ⌘F presses, so the sidebar focuses its search field.
   private(set) var findCount = 0
   var searchText = ""
+  /// Whether the window shows the inspector.
+  var showsInspector = false
 
   /// Where the diagram is now. Kept out of observation since it changes as it's panned; saved
   /// into the history entry it belongs to when the window moves on.
