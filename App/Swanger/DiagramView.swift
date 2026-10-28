@@ -17,6 +17,10 @@ struct DiagramView: View {
   let didReveal: () -> Void
   let viewportChanged: (Viewport) -> Void
   let selectRow: (CardRow) -> Void
+  /// Whether the window shows the inspector, for the rows' context menu.
+  let showsInspector: Bool
+  /// Selects the row and shows or hides the inspector.
+  let toggleInspector: (CardRow) -> Void
   let openOnItsOwn: (DiagramCard) -> Void
   let clearSelection: () -> Void
 
@@ -83,6 +87,7 @@ struct DiagramView: View {
         CardView(
           card: card, openRows: state.openRows, selection: state.selection,
           highlight: state.highlight, selectRow: selectRow,
+          showsInspector: showsInspector, toggleInspector: toggleInspector,
           hoverRow: { row in hover(row, in: card) },
           openOnItsOwn: { openOnItsOwn(card) }
         )
