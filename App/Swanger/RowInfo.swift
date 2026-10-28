@@ -37,7 +37,7 @@ struct RowInfo: View {
         }
         .foregroundStyle(Color.swangerAmber)
       }
-      if let node = row.node { ValueFacts(node: node, hasCard: row.opens != nil) }
+      if let node = row.node { ValueFacts(node: node, hasCard: row.opens == row.path) }
       if let definedIn = field?.definedIn {
         Label(definedIn.name, systemImage: "puzzlepiece")
           .foregroundStyle(Color.swangerViolet)
@@ -69,6 +69,7 @@ struct RowInfo: View {
 /// card, so they're left out; an array of scalars, which has no card, has its items' rules too.
 private struct ValueFacts: View {
   let node: SchemaNode
+  /// The row opens a card for the value itself, not for its items, as an array of objects does.
   let hasCard: Bool
 
   var body: some View {
