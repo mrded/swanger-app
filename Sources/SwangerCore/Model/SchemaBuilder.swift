@@ -589,14 +589,17 @@ final class SchemaBuilder {
       return zip(choice.variants, distinguishing).map { variant, fields in
         let value = Wording.literal(variant.discriminatorValue ?? .string(variant.name))
         let effect: String
+        var named = [property]
         if let fragment = variant.node.fragment {
           effect = "it's a \(Wording.code(fragment.name))"
         } else if case let extra = fields.filter({ $0 != property }), !extra.isEmpty {
           effect = Wording.required(extra)
+          named += extra
         } else {
           effect = "it's the \(variant.name) option"
         }
-        return Rule(.choice, "When \(Wording.code(property)) is \(value): \(effect)")
+        return Rule(
+          .choice, "When \(Wording.code(property)) is \(value): \(effect)", fields: named)
       }
     }
     let quantity = choice.mode == .oneOf ? "exactly one" : "at least one"
@@ -604,7 +607,11 @@ final class SchemaBuilder {
       let groups = distinguishing.map { fields in
         fields.count == 1 ? Wording.code(fields[0]) : "(\(list(fields.map(Wording.code), "and")))"
       }
-      return [Rule(.choice, "Needs \(quantity) of \(list(groups, "or"))")]
+      return [
+        Rule(
+          .choice, "Needs \(quantity) of \(list(groups, "or"))",
+          fields: Array(OrderedSet(distinguishing.joined())))
+      ]
     }
     return [Rule(.choice, "Must match \(quantity) of \(list(choice.variants.map(\.name), "or"))")]
   }

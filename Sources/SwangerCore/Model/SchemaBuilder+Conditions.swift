@@ -19,15 +19,19 @@ extension SchemaBuilder {
   }
 
   private func rule(for condition: Facts.Condition, present: Set<String>) -> Rule {
-    var text = "When \(describe(condition.condition, present: present))"
+    let tested = describe(condition.condition, present: present)
+    var text = "When \(tested.text)"
+    var fields = OrderedSet(tested.fields)
     // The value's own checks, such as "it's a number", needn't be said again by `then`.
     let checked = Self.flatFacts(condition.condition, allowing: Self.valueChecks)?.types
     let then = condition.then.flatMap { effects($0, branch: "then", checked: checked) }
-    text += ": \(then ?? "nothing more is needed")"
+    text += ": \(then?.text ?? "nothing more is needed")"
+    fields.formUnion(then?.fields ?? [])
     if let otherwise = condition.otherwise.flatMap({ effects($0, branch: "else") }) {
-      text += ". Otherwise: \(otherwise)"
+      text += ". Otherwise: \(otherwise.text)"
+      fields.formUnion(otherwise.fields)
     }
-    return Rule(.condition, text)
+    return Rule(.condition, text, fields: Array(fields))
   }
 
   /// The fields a `then` or `else` requires or forbids, from the flat shape ``effects`` words.
@@ -42,29 +46,39 @@ extension SchemaBuilder {
     return Array(names)
   }
 
-  /// The `if` schema as a condition: "`status` is "Rejected" and `reason` is present".
+  /// The `if` schema as a condition: "`status` is "Rejected" and `reason` is present", with
+  /// the fields it names.
   ///
   /// `properties` in an `if` also matches when the field is missing, so a field the object
   /// doesn't require is "missing or …".
-  private func describe(_ condition: ResolvedSchema, present: Set<String>) -> String {
-    let fallback = condition.object?["description"]?.value?.string ?? "the `if` schema matches"
+  private func describe(
+    _ condition: ResolvedSchema, present: Set<String>
+  ) -> (text: String, fields: [String]) {
+    let fallback = (
+      text: condition.object?["description"]?.value?.string ?? "the `if` schema matches",
+      fields: [String]()
+    )
     if let value = Self.flatFacts(condition, allowing: Self.valueChecks) {
       if let values = value.allowed {
-        return values.count == 1
+        let text =
+          values.count == 1
           ? "it's \(Wording.literal(values[0]))"
           : "it's one of \(list(values.map(Wording.literal), "or"))"
+        return (text, [])
       }
-      if let types = value.types { return "it's \(Wording.types(types))" }
+      if let types = value.types { return ("it's \(Wording.types(types))", []) }
     }
     guard let facts = Self.flatFacts(condition, allowing: ["properties", "required", "type"]),
       facts.types.map({ $0 == ["object"] }) ?? true
     else { return fallback }
     let present = present.union(facts.required)
     var clauses: [String] = []
+    var fields: [String] = []
     for (name, parts) in facts.properties {
       let path = Wording.code(name)
       if facts.forbidden.contains(name) {
         clauses.append("\(path) is missing")
+        fields.append(name)
         continue
       }
       guard parts.count == 1,
@@ -79,37 +93,43 @@ extension SchemaBuilder {
       } else if let types = field.types {
         check = "is \(Wording.types(types))"
       } else {
-        if facts.required.contains(name) { clauses.append("\(path) is present") }
+        if facts.required.contains(name) {
+          clauses.append("\(path) is present")
+          fields.append(name)
+        }
         continue
       }
       clauses.append("\(path) \(present.contains(name) ? "" : "is missing or ")\(check)")
+      fields.append(name)
     }
     for name in facts.required where facts.properties[name] == nil {
       clauses.append("\(Wording.code(name)) is present")
+      fields.append(name)
     }
-    return clauses.isEmpty ? fallback : list(clauses, "and")
+    return clauses.isEmpty ? fallback : (list(clauses, "and"), fields)
   }
 
-  /// What a `then` or `else` asks for: "`reason` is required; `note` isn't allowed". `nil` when
-  /// it asks for nothing; when it asks for something this can't word, "the `then` schema applies".
-  /// `checked` is the types the `if` has already said the value has.
+  /// What a `then` or `else` asks for: "`reason` is required; `note` isn't allowed", with the
+  /// fields it names. `nil` when it asks for nothing; when it asks for something this can't word,
+  /// "the `then` schema applies". `checked` is the types the `if` has already said the value has.
   private func effects(
     _ schema: ResolvedSchema, branch: String, checked: [String]? = nil
-  ) -> String? {
-    if Facts.isForbidden(schema) { return "nothing is allowed" }
-    let cantWord = "the `\(branch)` schema applies"
+  ) -> (text: String, fields: [String])? {
+    if Facts.isForbidden(schema) { return ("nothing is allowed", []) }
+    let cantWord = (text: "the `\(branch)` schema applies", fields: [String]())
     // Limits on the value itself, such as `{type: number, exclusiveMinimum: 0}`.
     if let value = Self.flatFacts(schema, allowing: Self.limits) {
       var phrases = value.applicable.constraintPhrases(isObject: false)
       if let types = value.types, types != checked {
         phrases.insert("must be \(Wording.types(types))", at: 0)
       }
-      return phrases.isEmpty ? nil : phrases.joined(separator: "; ")
+      return phrases.isEmpty ? nil : (phrases.joined(separator: "; "), [])
     }
     guard let facts = Self.flatFacts(schema, allowing: ["properties", "required", "type"]),
       facts.types.map({ $0 == ["object"] }) ?? true
     else { return cantWord }
     var effects: [String] = []
+    var fields = OrderedSet(facts.required)
     if !facts.required.isEmpty { effects.append(Wording.required(Array(facts.required))) }
     for (name, parts) in facts.properties where !facts.forbidden.contains(name) {
       guard parts.count == 1, let field = Self.flatFacts(parts[0].schema, allowing: Self.limits)
@@ -117,10 +137,12 @@ extension SchemaBuilder {
       var phrases = field.applicable.constraintPhrases(isObject: false)
       if let types = field.types { phrases.insert("must be \(Wording.types(types))", at: 0) }
       effects += phrases.map { "\(Wording.code(name)) \($0)" }
+      if !phrases.isEmpty { fields.append(name) }
     }
     let forbidden = facts.properties.keys.filter(facts.forbidden.contains)
     if !forbidden.isEmpty { effects.append(Wording.forbidden(Array(forbidden))) }
-    return effects.isEmpty ? nil : effects.joined(separator: "; ")
+    fields.formUnion(forbidden)
+    return effects.isEmpty ? nil : (effects.joined(separator: "; "), Array(fields))
   }
 
   /// Keywords an `if` can check the value itself with.

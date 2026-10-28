@@ -132,6 +132,7 @@ import Testing
         #"When `method` is "card": it's a `Card`"#,
         #"When `method` is "bank-transfer": it's a `BankTransfer`"#,
       ])
+    #expect(try fragment("Payment").node.rules.map(\.fields) == [["method"], ["method"]])
     #expect(
       try fragment("Customer").node.rules.map(\.text) == ["Needs exactly one of `email` or `phone`"]
     )
