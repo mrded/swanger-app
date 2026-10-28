@@ -146,7 +146,8 @@ enum LinkStyle: CaseIterable {
     }
   }
 
-  /// Draws `path` in this style, with its mark at `mark`.
+  /// Draws `path` in this style and `color`, with its mark at `mark` in the mark's own colour, as
+  /// the row it leaves shows it.
   func draw(_ path: Path, markAt mark: CGPoint, in context: GraphicsContext, color: Color) {
     context.stroke(path, with: .color(color), style: stroke)
     // Clears the line under the mark, so it doesn't show through a hollow one.
@@ -155,7 +156,7 @@ enum LinkStyle: CaseIterable {
     clear.fill(
       Path(ellipseIn: CGRect(x: mark.x - 4.5, y: mark.y - 4.5, width: 9, height: 9)),
       with: .color(.black))
-    self.mark.draw(in: context, at: mark, size: 7, color: color)
+    self.mark.draw(in: context, at: mark, size: 7, color: self.mark.color)
   }
 }
 
@@ -190,8 +191,13 @@ struct DiagramKey: View {
             Label {
               Text(style.meaning)
             } icon: {
-              LinkSample(style: style)
+              LinkSample(style: style, color: style == .decision ? .swangerAmber : .secondary)
             }
+          }
+          Label {
+            Text("Leads to a shared fragment")
+          } icon: {
+            LinkSample(style: .required, color: .swangerViolet)
           }
         }
         .font(.caption)
@@ -219,6 +225,7 @@ struct DiagramKey: View {
 /// A short connector in a style, as the key shows it.
 private struct LinkSample: View {
   let style: LinkStyle
+  let color: Color
 
   var body: some View {
     Canvas { context, size in
@@ -231,8 +238,6 @@ private struct LinkSample: View {
     .frame(width: 28, height: 10)
     .accessibilityHidden(true)
   }
-
-  private var color: Color { style == .decision ? .swangerAmber : .secondary }
 }
 
 /// The icon and title of a key entry, centred on each other.
