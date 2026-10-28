@@ -138,13 +138,14 @@ struct DiagramView: View {
   }
 
   /// Where the info goes in the view: right of the row's card, or left of it when there's no room
-  /// on the right, and kept within the view.
+  /// on the right, and kept within the view, over the card when neither side has room.
   private func infoOffset(beside frame: CGRect, row: Int) -> CGSize {
     let gap: CGFloat = 8
     let margin: CGFloat = 8
     let right = viewport.offset.width + frame.maxX * viewport.scale + gap
     let left = viewport.offset.width + frame.minX * viewport.scale - gap - RowInfo.width
-    let x = right + RowInfo.width + margin <= viewSize.width || left < margin ? right : left
+    let side = right + RowInfo.width + margin <= viewSize.width || left < margin ? right : left
+    let x = max(margin, min(side, viewSize.width - RowInfo.width - margin))
     let rowTop = frame.minY + DiagramMetrics.rowMiddle(row) - DiagramMetrics.rowHeight / 2
     let y = viewport.offset.height + rowTop * viewport.scale
     return CGSize(
