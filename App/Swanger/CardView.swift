@@ -11,16 +11,30 @@ struct CardView: View {
   let selectRow: (CardRow) -> Void
   let openOnItsOwn: () -> Void
 
+  /// The rule under the pointer, by its position in the card's rules.
+  @State private var hoveredRule: Int?
+  /// The row under the pointer, whose field's deciding rules light up.
+  @State private var hoveredRow: Int?
+
   var body: some View {
+    let ruled = ruledRows
     VStack(alignment: .leading, spacing: 0) {
       header
       ForEach(card.rows) { row in
         RowView(
           row: row, isOpen: row.path.map(openRows.contains) ?? false,
           isSelected: row.path != nil && row.path == selection,
-          isHighlighted: row.path != nil && row.path == highlight
+          isHighlighted: row.path != nil && row.path == highlight,
+          isRuled: ruled.contains(row.id)
         )
         .onTapGesture { selectRow(row) }
+        .onHover { hovering in
+          if hovering {
+            hoveredRow = row.id
+          } else if hoveredRow == row.id {
+            hoveredRow = nil
+          }
+        }
       }
       footer
     }
@@ -29,7 +43,33 @@ struct CardView: View {
     .overlay { shape.strokeBorder(accent.opacity(0.55), lineWidth: card.style == .top ? 1.5 : 1) }
     .clipShape(shape)
     .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
+    // After the clip, so the lines can run outside the card.
+    .overlayPreferenceValue(RuleBounds.self) { anchors in
+      if let hoveredRule, let anchor = anchors[hoveredRule], !ruled.isEmpty {
+        GeometryReader { proxy in
+          RuleLines(rows: ruled, rule: proxy[anchor])
+        }
+      }
+    }
     .anchorPreference(key: CardBounds.self, value: .bounds) { [card.id: $0] }
+  }
+
+  /// The rows whose fields the hovered rule names, in order.
+  private var ruledRows: [Int] {
+    guard let hoveredRule, card.node.rules.indices.contains(hoveredRule) else { return [] }
+    let names = card.node.rules[hoveredRule].fields
+    return card.rows.compactMap { row in
+      if case .field(let field) = row.kind, names.contains(field.name) { row.id } else { nil }
+    }
+  }
+
+  /// Whether rule `index` is hovered, or decides the field of the hovered row.
+  private func isLit(rule index: Int) -> Bool {
+    if hoveredRule == index { return true }
+    guard let hoveredRow, card.rows.indices.contains(hoveredRow),
+      case .field(let field) = card.rows[hoveredRow].kind
+    else { return false }
+    return field.decidedBy.contains(card.node.rules[index])
   }
 
   private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 8) }
@@ -74,13 +114,28 @@ struct CardView: View {
     let notes = card.node.cardNotes
     if !card.node.rules.isEmpty || !notes.isEmpty {
       VStack(alignment: .leading, spacing: 4) {
-        ForEach(Array(card.node.rules.enumerated()), id: \.offset) { _, rule in
+        ForEach(Array(card.node.rules.enumerated()), id: \.offset) { index, rule in
           Label {
             Text(markdown: rule.text)
           } icon: {
             Image(systemName: icon(for: rule.kind))
           }
           .foregroundStyle(Color.swangerAmber)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background {
+            if isLit(rule: index) {
+              Color.swangerAmber.opacity(0.15).padding(-3)
+            }
+          }
+          .contentShape(Rectangle())
+          .onHover { hovering in
+            if hovering {
+              hoveredRule = index
+            } else if hoveredRule == index {
+              hoveredRule = nil
+            }
+          }
+          .anchorPreference(key: RuleBounds.self, value: .bounds) { [index: $0] }
         }
         ForEach(notes, id: \.self) { note in
           Text(markdown: note).foregroundStyle(.secondary)
@@ -105,11 +160,55 @@ struct CardView: View {
   }
 }
 
+/// Where each of a card's rules is in the footer, by its position in the card's rules.
+private struct RuleBounds: PreferenceKey {
+  static let defaultValue: [Int: Anchor<CGRect>] = [:]
+
+  static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
+    value.merge(nextValue()) { $1 }
+  }
+}
+
+/// Lines from the left edge of each of `rows` down outside the card's left edge and into the
+/// rule at `rule`. Each row's line is a step further out than the one below it, so they nest
+/// without crossing.
+private struct RuleLines: View {
+  let rows: [Int]
+  let rule: CGRect
+
+  var body: some View {
+    // Paths rather than a `Canvas`, which would clip the lines to the card.
+    let end = CGPoint(x: rule.minX - 2, y: rule.midY)
+    Path { path in
+      // Kept within the gap between columns.
+      let step = min(6, (DiagramMetrics.columnGap - 12) / CGFloat(rows.count))
+      for (order, row) in rows.enumerated() {
+        let y = DiagramMetrics.rowMiddle(row)
+        let x = -step * CGFloat(rows.count - order)
+        path.move(to: CGPoint(x: 0, y: y))
+        path.addLine(to: CGPoint(x: x, y: y))
+        path.addLine(to: CGPoint(x: x, y: end.y))
+        path.addLine(to: end)
+      }
+    }
+    .stroke(
+      Color.swangerAmber, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+    )
+    .overlay {
+      Path(ellipseIn: CGRect(x: end.x - 2.5, y: end.y - 2.5, width: 5, height: 5))
+        .fill(Color.swangerAmber)
+    }
+    .allowsHitTesting(false)
+  }
+}
+
 private struct RowView: View {
   let row: CardRow
   let isOpen: Bool
   let isSelected: Bool
   let isHighlighted: Bool
+  /// Named by the rule under the pointer.
+  let isRuled: Bool
 
   var body: some View {
     HStack(spacing: 6) {
@@ -167,6 +266,8 @@ private struct RowView: View {
   @ViewBuilder private var background: some View {
     if isSelected {
       Color.accentColor.opacity(isHighlighted ? 0.35 : 0.2)
+    } else if isRuled {
+      Color.swangerAmber.opacity(0.18)
     } else if isOpen {
       accent.opacity(0.08)
     } else {

@@ -333,7 +333,7 @@ extension SchemaBuilder {
     func dependencies() -> [(rule: Rule, decides: [String])] {
       dependentRequired.filter { !$0.requires.isEmpty }.map { field, requires in
         let text = "When \(Wording.code(field)) is present: \(Wording.required(requires))"
-        return (Rule(.dependency, text), requires)
+        return (Rule(.dependency, text, fields: [field] + requires), requires)
       }
     }
 

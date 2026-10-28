@@ -16,10 +16,14 @@ public struct Rule: Equatable, Sendable, CustomStringConvertible {
 
   public let kind: Kind
   public let text: String
+  /// The fields of the value the rule names, in the order it names them. Not every name in
+  /// backticks: values, fragments and keywords are in backticks too.
+  public let fields: [String]
 
-  public init(_ kind: Kind, _ text: String) {
+  public init(_ kind: Kind, _ text: String, fields: [String] = []) {
     self.kind = kind
     self.text = text
+    self.fields = fields
   }
 
   public var description: String { text }

@@ -569,6 +569,43 @@ import Testing
     #expect(schema.rules.map(\.text) == ["When the order is international: `customs` is required"])
   }
 
+  // MARK: - Fields a rule names
+
+  @Test(arguments: [
+    (
+      "{type: object, if: {properties: {status: {const: Rejected}}}, then: {required: [reason]}}",
+      ["status", "reason"]
+    ),
+    (
+      "{type: object, if: {required: [ship]}, then: {properties: {zip: {maxLength: 8}, box: false}}, else: {required: [pickup]}}",
+      ["ship", "zip", "box", "pickup"]
+    ),
+    ("{type: object, if: {required: [ship]}, then: {allOf: [{required: [zip]}]}}", ["ship"]),
+    ("{if: {const: x}, then: {maxLength: 1}}", []),
+    // A description isn't parsed for names, so only the `then` names a field.
+    (
+      "{type: object, if: {description: the order is international, minProperties: 3}, then: {required: [customs]}}",
+      ["customs"]
+    ),
+    (
+      "{type: object, properties: {a: {}, b: {}}, dependentRequired: {a: [b, c]}}", ["a", "b", "c"]
+    ),
+    ("{type: object, oneOf: [{required: [email]}, {required: [phone]}]}", ["email", "phone"]),
+    ("{type: string, maxLength: 70}", []),
+    ("{type: object, not: {required: [a]}}", []),
+  ])
+  func ruleNamesItsFields(schema: String, fields: [String]) throws {
+    #expect(try node(schema).rules.map(\.fields) == [fields])
+  }
+
+  @Test func conditionThatCantBeWordedNamesNoFields() throws {
+    let schema = try node(
+      "{type: object, if: {description: the order is big, minProperties: 3}, then: {allOf: [{required: [approval]}]}}"
+    )
+
+    #expect(schema.rules.map(\.fields) == [[]])
+  }
+
   // MARK: - Fragments
 
   @Test func refWithNewFieldsIsANewObject() throws {
