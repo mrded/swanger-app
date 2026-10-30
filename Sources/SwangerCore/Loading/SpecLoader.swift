@@ -9,10 +9,11 @@ public enum SpecLoader {
   }
 
   /// Reads and parses any JSON or YAML file, such as one a spec refers to with a `$ref`. A file on
-  /// a web server is downloaded, blocking until it arrives.
+  /// a web server is downloaded, blocking until it arrives, and has the URL it was redirected to.
   public static func loadDocument(_ url: URL) throws(LoadError) -> SourceDocument {
     if RemoteFile.isRemote(url) {
-      return try parse(RemoteFile.fetch(url), from: url)
+      let download = try RemoteFile.fetch(url)
+      return try parse(download.data, from: download.url)
     }
     let data: Data
     do {

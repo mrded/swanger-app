@@ -12,10 +12,12 @@ public enum RemoteFile {
   }
 
   /// Downloads `url`, always asking the server rather than a cache, so a reload sees changes.
+  /// Returns the contents and where they came from after any redirects, which is what relative
+  /// `$ref`s in them are relative to.
   ///
   /// Blocks the calling thread until the download ends. Loading runs on a ``LargeStack`` thread of
   /// its own, so nothing else waits on it.
-  static func fetch(_ url: URL) throws(LoadError) -> Data {
+  static func fetch(_ url: URL) throws(LoadError) -> (data: Data, url: URL) {
     let request = URLRequest(
       url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
     let outcome = Outcome()
@@ -32,7 +34,7 @@ public enum RemoteFile {
 
   private static func result(
     data: Data?, response: URLResponse?, error: Error?, url: URL
-  ) -> Result<Data, LoadError> {
+  ) -> Result<(data: Data, url: URL), LoadError> {
     if let error {
       return .failure(LoadError(file: url, reason: .unreadable(error.localizedDescription)))
     }
@@ -43,11 +45,11 @@ public enum RemoteFile {
           file: url, reason: .unreadable("The server answered \(response.statusCode) (\(status))."))
       )
     }
-    return .success(data ?? Data())
+    return .success((data ?? Data(), response?.url ?? url))
   }
 
   /// Carries the download's result from URLSession's queue to the waiting thread.
   private final class Outcome: @unchecked Sendable {
-    var result: Result<Data, LoadError>?
+    var result: Result<(data: Data, url: URL), LoadError>?
   }
 }

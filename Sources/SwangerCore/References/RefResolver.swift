@@ -233,7 +233,8 @@ public final class RefResolver {
     if path.isEmpty {
       file = site.file
     } else {
-      guard let url = URL(string: path, relativeTo: site.file) else {
+      // Relative to where the file was read from, which differs when a server redirected it.
+      guard let url = URL(string: path, relativeTo: baseURL(of: site.file)) else {
         return .failure(.missingTarget(NodeLocation(file: site.file.appending(path: path))))
       }
       // A spec on disk reads only files on disk, and a spec on a web server only files on the web.
@@ -292,6 +293,13 @@ public final class RefResolver {
     }
     files[file] = result
     return result
+  }
+
+  /// The URL `file` was read from: a file on a web server that redirected has the URL it was
+  /// redirected to. A file not read yet is taken to be where it says.
+  private func baseURL(of file: URL) -> URL {
+    guard case .success(let document) = files[Self.key(for: file)] else { return file }
+    return document.url
   }
 
   private func warn(at location: NodeLocation, ref: String, failure: RefFailure) {

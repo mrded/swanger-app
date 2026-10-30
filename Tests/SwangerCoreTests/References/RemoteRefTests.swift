@@ -18,9 +18,15 @@ import Testing
         Parent: {$ref: "../shared/types.yaml#/Id"}
         Absolute: {$ref: "https://other.example.com/types.yaml#/Name"}
         OnDisk: {$ref: "file:///etc/types.yaml"}
+        Redirected: {$ref: "latest.yaml#/Tag"}
     """,
     "common/types.yaml": "Tag: {type: string}",
+    "v2/types.yaml": "Tag: {$ref: 'names.yaml#/Name'}",
+    "v2/names.yaml": "Name: {type: string}",
   ]
+
+  /// Files the server redirects, to where it sends them.
+  private static let redirects = ["latest.yaml": "v2/types.yaml"]
 
   /// The URLs asked for, in order.
   private final class Requests {
@@ -36,11 +42,12 @@ import Testing
     let requests = self.requests
     resolver = RefResolver(root: spec, version: .v31) { url throws(LoadError) in
       requests.urls.append(url)
-      let path = url.absoluteString.replacingOccurrences(of: Self.base.absoluteString, with: "")
+      var path = url.absoluteString.replacingOccurrences(of: Self.base.absoluteString, with: "")
+      path = Self.redirects[path] ?? path
       guard let text = Self.files[path] else {
         throw LoadError(file: url, reason: .unreadable("Not found"))
       }
-      return try SpecLoader.parse(Data(text.utf8), from: url)
+      return try SpecLoader.parse(Data(text.utf8), from: URL(string: path, relativeTo: Self.base)!)
     }
   }
 
@@ -70,6 +77,18 @@ import Testing
 
     #expect(target == .unresolved(.remote("file:///etc/types.yaml")))
     #expect(requests.urls.isEmpty)
+  }
+
+  @Test func refsInARedirectedFileAreRelativeToWhereItWasRedirected() throws {
+    let target = try #require(reference(of: "Redirected"))
+    let tag = try #require(resolver.schema(at: target.origin!.location))
+    let name = try #require(tag.object?.reference?.target)
+
+    #expect(name.origin?.name == "v2/names.yaml#/Name")
+    #expect(
+      requests.urls.map(\.absoluteString) == [
+        "https://example.com/api/v1/latest.yaml", "https://example.com/api/v1/v2/names.yaml",
+      ])
   }
 
   @Test func remoteFileIsKnownByScheme() {
