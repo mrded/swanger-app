@@ -34,9 +34,13 @@ enum TryItDrafts {
     }
     // The schema's own file, in full, since a fragment can be in a sibling file.
     return [
-      spec.standardizedFileURL.path, kind, location.file.standardizedFileURL.path,
-      location.pointer.description,
+      key(of: spec), kind, key(of: location.file), location.pointer.description,
     ].joined(separator: "\n")
+  }
+
+  /// A file's path, or a web address in full.
+  private static func key(of url: URL) -> String {
+    url.isFileURL ? url.standardizedFileURL.path : url.absoluteString
   }
 }
 

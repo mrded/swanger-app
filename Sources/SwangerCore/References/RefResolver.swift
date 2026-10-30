@@ -233,10 +233,14 @@ public final class RefResolver {
     if path.isEmpty {
       file = site.file
     } else {
-      guard let url = URL(string: path, relativeTo: site.file) else {
+      // Relative to where the file was read from, which differs when a server redirected it.
+      guard let url = URL(string: path, relativeTo: baseURL(of: site.file)) else {
         return .failure(.missingTarget(NodeLocation(file: site.file.appending(path: path))))
       }
-      guard url.isFileURL else { return .failure(.remote(ref)) }
+      // A spec on disk reads only files on disk, and a spec on a web server only files on the web.
+      let isReadable =
+        RemoteFile.isRemote(site.file) ? RemoteFile.isRemote(url) : url.isFileURL
+      guard isReadable else { return .failure(.remote(ref)) }
       file = Self.key(for: url)
     }
 
@@ -291,6 +295,13 @@ public final class RefResolver {
     return result
   }
 
+  /// The URL `file` was read from: a file on a web server that redirected has the URL it was
+  /// redirected to. A file not read yet is taken to be where it says.
+  private func baseURL(of file: URL) -> URL {
+    guard case .success(let document) = files[Self.key(for: file)] else { return file }
+    return document.url
+  }
+
   private func warn(at location: NodeLocation, ref: String, failure: RefFailure) {
     guard warnedLocations.insert(location).inserted else { return }
     warnings.append(
@@ -307,8 +318,8 @@ public final class RefResolver {
   }
 
   /// Files are cached by their absolute, standardised URL, so `./a.yaml` and `b/../a.yaml` are the
-  /// same file.
+  /// same file. The same goes for files on a web server.
   private static func key(for url: URL) -> URL {
-    url.absoluteURL.standardizedFileURL
+    url.isFileURL ? url.absoluteURL.standardizedFileURL : url.absoluteURL.standardized
   }
 }

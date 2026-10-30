@@ -7,7 +7,8 @@ import SwangerValidation
 /// changes, and keeps the window's history of where it's been.
 @MainActor @Observable
 final class SpecStore {
-  /// Where the spec is now. It changes when the document is renamed or moved.
+  /// Where the spec is now: a file, or a web address. A file's changes when the document is
+  /// renamed or moved.
   private(set) var url: URL
   /// The latest spec that loaded. A failed reload keeps the previous one.
   private(set) var spec: Spec?
@@ -102,8 +103,9 @@ final class SpecStore {
     case .failure(let error):
       loadError = error
     }
+    // A spec on a web server can't be watched: it's reloaded by hand.
     #if !APPSTORE
-      watch(spec?.referencedFiles ?? [], readSince: started)
+      if url.isFileURL { watch(spec?.referencedFiles ?? [], readSince: started) }
     #endif
   }
 
