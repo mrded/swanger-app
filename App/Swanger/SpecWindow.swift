@@ -26,8 +26,9 @@ struct SpecWindow: View {
   @ViewBuilder private var content: some View {
     if let spec = store.spec {
       #if APPSTORE
-        if spec.referencedFiles.contains(where: { $0 != spec.url.absoluteURL.standardizedFileURL })
-        {
+        // The spec comes first. Other files on disk are outside the sandbox; on the web, they're
+        // fine.
+        if spec.referencedFiles.dropFirst().contains(where: \.isFileURL) {
           ContentUnavailableView(
             "Spec not supported",
             systemImage: "doc.badge.ellipsis",
@@ -89,6 +90,18 @@ struct SpecWindow: View {
         .pickerStyle(.segmented)
         .disabled(store.view.page == .overview)
         .help("Show the schema as a diagram, or check a payload against it")
+      }
+      if !store.url.isFileURL {
+        // Files on disk reload when they change; a spec on the web only when asked.
+        ToolbarItem {
+          Button {
+            store.reload()
+          } label: {
+            Label("Reload", systemImage: "arrow.clockwise")
+          }
+          .disabled(store.isLoading)
+          .help("Download the spec again")
+        }
       }
       if !spec.warnings.isEmpty {
         ToolbarItem { WarningsButton(warnings: spec.warnings) }

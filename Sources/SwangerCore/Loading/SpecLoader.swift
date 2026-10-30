@@ -8,8 +8,12 @@ public enum SpecLoader {
     try openAPIDocument(from: loadDocument(url))
   }
 
-  /// Reads and parses any JSON or YAML file, such as one a spec refers to with a `$ref`.
+  /// Reads and parses any JSON or YAML file, such as one a spec refers to with a `$ref`. A file on
+  /// a web server is downloaded, blocking until it arrives.
   public static func loadDocument(_ url: URL) throws(LoadError) -> SourceDocument {
+    if RemoteFile.isRemote(url) {
+      return try parse(RemoteFile.fetch(url), from: url)
+    }
     let data: Data
     do {
       data = try Data(contentsOf: url)

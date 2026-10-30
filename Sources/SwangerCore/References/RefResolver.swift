@@ -236,7 +236,10 @@ public final class RefResolver {
       guard let url = URL(string: path, relativeTo: site.file) else {
         return .failure(.missingTarget(NodeLocation(file: site.file.appending(path: path))))
       }
-      guard url.isFileURL else { return .failure(.remote(ref)) }
+      // A spec on disk reads only files on disk, and a spec on a web server only files on the web.
+      let isReadable =
+        RemoteFile.isRemote(site.file) ? RemoteFile.isRemote(url) : url.isFileURL
+      guard isReadable else { return .failure(.remote(ref)) }
       file = Self.key(for: url)
     }
 
@@ -307,8 +310,8 @@ public final class RefResolver {
   }
 
   /// Files are cached by their absolute, standardised URL, so `./a.yaml` and `b/../a.yaml` are the
-  /// same file.
+  /// same file. The same goes for files on a web server.
   private static func key(for url: URL) -> URL {
-    url.absoluteURL.standardizedFileURL
+    url.isFileURL ? url.absoluteURL.standardizedFileURL : url.absoluteURL.standardized
   }
 }
